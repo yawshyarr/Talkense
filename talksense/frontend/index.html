@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TalkSense - Speech Analyzer</title>
+    
+    <!-- Load Tailwind CSS via CDN for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              navy: '#060B19',
+              primary: '#00E5FF',
+              secondary: '#B415FF',
+            },
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+            }
+          }
+        }
+      }
+    </script>
+    
+    <!-- Load React, ReactDOM, and Babel -->
+    <script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.production.min.js" crossorigin></script>
+    <script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.24.0/babel.min.js" crossorigin></script>
+
+    <!-- Load Framer Motion via UMD -->
+    <script src="https://cdn.jsdelivr.net/npm/framer-motion@10.12.16/dist/framer-motion.js" crossorigin></script>
+    
+
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="/styles/index.css" />
+  </head>
+  <body class="bg-navy text-white min-h-screen">
+    <div id="root">
+      <div style="background:#0a1128; color:white; min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; font-family:sans-serif;">
+        <div style="width: 50px; height: 50px; border: 3px solid rgba(0,242,254,0.1); border-top-color: #00f2fe; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px;"></div>
+        <h1 style="color:#00f2fe; font-size: 1.2rem; letter-spacing: 2px; font-weight: 300;">TALKSENSE</h1>
+      </div>
+    </div>
+
+    <style>
+      @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+    
+    <script>
+      // Global Component Registry
+      window.TalkSense = {
+        register: function(name, component) {
+          window[name] = component;
+        }
+      };
+      
+      // Setup global environment for Babel components
+      if (typeof React !== 'undefined') {
+        const { useState, useEffect, useMemo, useCallback, useRef } = React;
+        window.useState = useState;
+        window.useEffect = useEffect;
+        window.useMemo = useMemo;
+        window.useCallback = useCallback;
+        window.useRef = useRef;
+      }
+      
+      if (window.Motion) {
+        window.motion = window.Motion.motion;
+        window.AnimatePresence = window.Motion.AnimatePresence;
+      }
+    </script>
+    
+    <!-- Custom Cursor Element -->
+    <div id="custom-cursor" class="fixed top-0 left-0 w-4 h-4 rounded-full bg-primary pointer-events-none mix-blend-screen z-50 transition-transform duration-75"></div>
+    
+    <script>
+      // Simple custom cursor logic to run alongside React
+      const cursor = document.getElementById('custom-cursor');
+      document.addEventListener('mousemove', (e) => {
+        cursor.style.transform = `translate(${e.clientX - 8}px, ${e.clientY - 8}px)`;
+      });
+    </script>
+    
+    <script type="text/babel" data-presets="react,env" src="components/Navbar.jsx"></script>
+    <script type="text/babel" data-presets="react,env" src="pages/LandingPage.jsx"></script>
+    <script type="text/babel" data-presets="react,env" src="pages/AuthPages.jsx"></script>
+    <script type="text/babel" data-presets="react,env" src="pages/DashboardPage.jsx"></script>
+    <script type="text/babel" data-presets="react,env" src="pages/SetupPage.jsx"></script>
+    <script type="text/babel" data-presets="react,env" src="pages/LiveSpeechPage.jsx"></script>
+    <script type="text/babel" data-presets="react,env" src="pages/ReportPage.jsx"></script>
+    
+    <!-- Main App Entry in Babel -->
+    <script type="text/babel" data-presets="react,env" src="app.jsx"></script>
+
+    <script type="text/babel">
+      // This runs after Babel has compiled and executed the other scripts
+      setTimeout(() => {
+        if (window.App) {
+          const root = ReactDOM.createRoot(document.getElementById('root'));
+          root.render(<App />);
+        }
+      }, 1500);
+    </script>
+
+    <script>
+      // Diagnostic log after everything should be loaded
+    </script>
+  </body>
+</html>
