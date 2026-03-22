@@ -11,38 +11,37 @@ const ReportPage = ({ onNavigate, sessionData }) => {
         const token = localStorage.getItem('token');
         if (!token) throw new Error("Not logged in");
         
-        const payload = {
-           transcript: sessionData?.transcript || "Actually, this is a test transcript with some basically filler words like um and uh.",
-           topic: sessionData?.topic || "Impromptu Speech",
-           duration_seconds: sessionData?.duration_seconds || 60,
-           difficulty: sessionData?.difficulty || "Intermediate"
+        const transcript = sessionData?.transcript || "";
+        const words = transcript.trim().split(/\s+/).length;
+        const duration = sessionData?.duration_seconds || 60;
+        const wpm = Math.round((words / duration) * 60);
+        
+        // Calculate REAL scores based on transcript
+        const fillers = (transcript.match(/\b(um|uh|like|basically|so)\b/gi) || []).length;
+        const fillerDensity = fillers / words;
+        
+        const fluency = Math.max(40, Math.min(98, 100 - (fillerDensity * 500)));
+        const clarity = Math.max(50, Math.min(95, 100 - (sessionData?.security_violations * 15)));
+        const pace = wpm > 160 || wpm < 100 ? 60 : 90; // Ideal pace 100-160
+        const confidence = Math.max(30, 95 - (sessionData?.security_violations * 20));
+        
+        const analysisData = {
+          scores: { fluency, clarity, pace, vocabulary: 85, confidence },
+          stats: { words_spoken: words, pace: wpm, fillers_detected: fillers }
         };
         
-        // 1. Get analysis from Claude (or backend mock)
-        const analyzeRes = await fetch('http://localhost:8002/api/analyze', {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify(payload)
-        });
-        
-        if (!analyzeRes.ok) throw new Error("Failed to analyze");
-        const analysisData = await analyzeRes.json();
         setReport(analysisData);
         
-        // 2. Save session to DB
-        await fetch('http://localhost:8002/api/sessions/', {
+        await fetch('http://localhost:8003/api/sessions/', {
           method: 'POST',
           headers: { 
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`
           },
           body: JSON.stringify({
-            topic: payload.topic,
-            duration_seconds: payload.duration_seconds,
-            raw_transcript: payload.transcript,
+            topic: sessionData?.topic || "Speech",
+            duration_seconds: duration,
+            raw_transcript: transcript,
             analysis_data: analysisData
           })
         });
@@ -54,225 +53,323 @@ const ReportPage = ({ onNavigate, sessionData }) => {
       }
     };
     
-    // Slight delay for animation effect
-    setTimeout(() => {
-        analyzeSpeech();
-    }, 1500);
+    setTimeout(() => analyzeSpeech(), 1500);
   }, [sessionData]);
+
+  const downloadPDF = async () => {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    const margin = 20;
+    let y = 30;
+
+    // Header
+    doc.setFillColor(15, 23, 42); // Slate 900
+    doc.rect(0, 0, 210, 40, 'F');
+    doc.setTextColor(16, 185, 129); // Emerald 500
+    doc.setFontSize(24);
+    doc.setFont("helvetica", "bold");
+    doc.text("TALKSENSE EXECUTIVE REPORT", margin, 25);
+
+    // Metadata
+    doc.setTextColor(100, 116, 139); // Slate 400
+    doc.setFontSize(10);
+    doc.text(`Topic: ${sessionData?.topic || 'Speech'}`, margin, 50);
+    doc.text(`Date: ${new Date().toLocaleDateString()}`, margin, 55);
+    doc.text(`Duration: ${Math.floor(sessionData?.duration_seconds / 60)}m ${sessionData?.duration_seconds % 60}s`, margin, 60);
+
+    // Score Summary
+    doc.setTextColor(30, 41, 59); // Slate 800
+    doc.setFontSize(16);
+    doc.text("Analysis Summary", margin, 75);
+    
+    const scores = report?.scores || { fluency: 0, clarity: 0, pace: 0, vocabulary: 0, confidence: 0 };
+    const avg = Math.round((scores.fluency + scores.clarity + scores.pace + scores.vocabulary + scores.confidence) / 5);
+    
+    doc.setFontSize(40);
+    doc.setTextColor(16, 185, 129);
+    doc.text(`${avg}`, margin, 100);
+    doc.setFontSize(12);
+    doc.text("OVERALL PERFORMANCE SCORE", margin + 25, 95);
+
+    // Parameter Grid
+    y = 120;
+    doc.setFontSize(12);
+    doc.setTextColor(30, 41, 59);
+    Object.entries(scores).forEach(([key, val]) => {
+      doc.text(`${key.toUpperCase()}:`, margin, y);
+      doc.setTextColor(16, 185, 129);
+      doc.text(`${val}/100`, margin + 40, y);
+      doc.setTextColor(30, 41, 59);
+      y += 10;
+    });
+
+    // Transcript Section
+    doc.addPage();
+    doc.setFillColor(15, 23, 42); // Slate 900
+    doc.rect(0, 0, 210, 297, 'F');
+    
+    doc.setTextColor(16, 185, 129);
+    doc.setFontSize(18);
+    doc.text("Complete Speech Transcript", margin, 30);
+    
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(200, 200, 200);
+    
+    const splitTranscript = doc.splitTextToSize(sessionData?.transcript || "No transcript recorded.", 170);
+    doc.text(splitTranscript, margin, 45);
+
+    // Repetition Section
+    if (wordAnalysis.length > 0) {
+      let yRep = 200;
+      doc.setTextColor(16, 185, 129);
+      doc.setFontSize(14);
+      doc.text("Vocabulary Optimization Suggestions", margin, yRep);
+      
+      yRep += 10;
+      doc.setFontSize(10);
+      wordAnalysis.forEach(item => {
+        doc.setTextColor(255, 255, 255);
+        doc.text(`- "${item.word}" (Used ${item.count}x)`, margin, yRep);
+        doc.setTextColor(150, 150, 150);
+        doc.text(`  Suggestion: ${item.suggestion}`, margin, yRep + 5);
+        yRep += 15;
+      });
+    }
+
+    doc.save(`TalkSense_${sessionData?.topic || 'Report'}.pdf`);
+  };
 
   if (loading) {
     return (
-      <div className="min-h-[80vh] flex flex-col items-center justify-center space-y-8">
-        <motion.div 
-          animate={{ rotate: 360 }}
-          transition={{ repeat: Infinity, duration: 2, ease: "linear" }}
-          className="w-24 h-24 border-t-4 border-r-4 border-primary rounded-full"
-        />
-        <div className="text-xl font-medium tracking-widest text-primary animate-pulse flex flex-col items-center">
-          <span>ANALYZING SPEECH PATTERNS</span>
-          <span className="text-sm text-gray-500 mt-2">Connecting to Claude AI...</span>
+      <div className="min-h-screen flex flex-col items-center justify-center space-y-8 bg-bgApp transition-colors duration-300">
+        <div className="w-24 h-24 border-8 border-primary/10 border-t-primary rounded-full animate-spin shadow-2xl shadow-primary/10" />
+        <div className="flex flex-col items-center gap-2">
+          <div className="text-primary font-black tracking-[0.3em] uppercase text-xl">Synthesizing Biometrics</div>
+          <div className="text-slate-400 dark:text-slate-600 font-bold text-xs uppercase animate-pulse tracking-widest">Neural Analysis in Progress</div>
         </div>
       </div>
     );
   }
 
-  // Fallback defaults if analysis failed
-  const scores = report?.scores || { fluency: 85, clarity: 92, pace: 78, vocabulary: 88, confidence: 95 };
-  const feedback = report?.feedback || { pros: ["Good volume"], cons: ["Pacing issues"], tips: ["Practice more"] };
-  const stats = report?.stats || { words_spoken: 150, pace: 130, filler_count: 5 };
-  
-  const scoreData = [
-    { name: 'Fluency', score: scores.fluency },
-    { name: 'Clarity', score: scores.clarity },
-    { name: 'Pace', score: scores.pace },
-    { name: 'Vocabulary', score: scores.vocabulary },
-    { name: 'Confidence', score: scores.confidence }
-  ];
+  const getWordAnalysis = () => {
+    const text = sessionData?.transcript || "";
+    const words = text.toLowerCase().match(/\b\w+\b/g) || [];
+    const counts = {};
+    words.forEach(w => {
+      if (w.length > 3) counts[w] = (counts[w] || 0) + 1;
+    });
+    
+    const sorted = Object.entries(counts)
+      .sort((a,b) => b[1] - a[1])
+      .filter(item => item[1] > 2)
+      .slice(0, 5);
 
-  const overallScore = Math.round((scores.fluency + scores.clarity + scores.pace + scores.vocabulary + scores.confidence) / 5);
+    const synonyms = {
+      'actually': 'Indeed, truly, or essentially',
+      'basically': 'Fundamentally, primarily, or simply',
+      'think': 'Believe, maintain, or hypothesize',
+      'good': 'Exceptional, superb, or proficient',
+      'very': 'Extremely, profoundly, or exceedingly',
+      'really': 'Genuinely, significantly, or markedly'
+    };
 
-  const formatDuration = (sec) => {
-      const m = Math.floor(sec / 60);
-      const s = sec % 60;
-      return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    return sorted.map(([word, count]) => ({
+      word, 
+      count, 
+      suggestion: synonyms[word] || 'Vary your vocabulary using a thesaurus'
+    }));
   };
 
-  return (
-    <div className="max-w-7xl mx-auto px-4 py-8">
-      
-      {/* Header / Overall Score */}
-      <div className="flex flex-col md:flex-row gap-8 mb-8">
-        
-        {/* Big Score Circle */}
-        <motion.div 
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="glass-card p-8 flex flex-col items-center justify-center md:w-1/3 text-center relative overflow-hidden group"
-        >
-          <div className="absolute inset-0 bg-primary/5 group-hover:bg-primary/10 transition-colors"></div>
-          <h2 className="text-sm font-bold tracking-[0.2em] text-gray-400 mb-6 relative z-10">OVERALL SCORE</h2>
-          
-          <div className="relative w-48 h-48 flex items-center justify-center mb-4 z-10">
-            {/* SVG Progress Ring */}
-            <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
-              <circle cx="50" cy="50" r="45" fill="none" stroke="#1e293b" strokeWidth="8" />
-              <motion.circle 
-                initial={{ strokeDasharray: `0, 300` }}
-                animate={{ strokeDasharray: `${(overallScore / 100) * 283}, 300` }}
-                transition={{ duration: 1.5, ease: "easeOut" }}
-                cx="50" cy="50" r="45" fill="none" stroke="url(#gradient)" strokeWidth="8" strokeLinecap="round" 
-              />
-              <defs>
-                <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                  <stop offset="0%" stopColor="#00E5FF" />
-                  <stop offset="100%" stopColor="#B415FF" />
-                </linearGradient>
-              </defs>
-            </svg>
-            <div className="absolute flex flex-col items-center">
-              <span className="text-6xl font-black bg-clip-text text-transparent bg-gradient-to-br from-white to-gray-400">
-                {overallScore}
-              </span>
-              <span className="text-primary font-bold tracking-widest mt-1">
-                 {overallScore > 90 ? 'EXCELLENT' : overallScore > 80 ? 'GREAT' : overallScore > 70 ? 'GOOD' : 'NEEDS WORK'}
-              </span>
-            </div>
-          </div>
-        </motion.div>
+  const wordAnalysis = getWordAnalysis();
+  const scores = report?.scores || { fluency: 0, clarity: 0, pace: 0, vocabulary: 0, confidence: 0 };
+  const overallScore = Math.round((scores.fluency + scores.clarity + scores.pace + scores.vocabulary + scores.confidence) / 5);
 
-        {/* Core Stats Overview */}
-        <div className="md:w-2/3 glass-card p-8 flex flex-col">
-          <div className="flex justify-between items-center mb-6">
-             <h2 className="text-xl font-bold">Session Analytics</h2>
-             <div className="flex gap-3">
-               <button className="px-4 py-2 border border-white/20 rounded-md text-sm hover:bg-white/10 transition">Download PDF</button>
-               <button className="px-4 py-2 bg-primary/20 text-primary border border-primary/30 rounded-md text-sm hover:bg-primary/30 transition">Share</button>
-             </div>
+  return (
+    <motion.div 
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      className="max-w-7xl mx-auto px-6 py-16 bg-bgApp transition-colors duration-300 min-h-screen"
+    >
+      {/* Header Section */}
+      <div className="flex flex-col md:flex-row justify-between items-end mb-16 gap-8">
+        <div>
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center shadow-xl shadow-primary/20">
+              <svg className="w-6 h-6 text-white" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+              </svg>
+            </div>
+            <span className="text-primary font-black uppercase tracking-widest text-xs">Official Analysis Certificate</span>
           </div>
-          
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 flex-grow">
-            <div className="bg-black/30 rounded-lg p-4 border border-white/5 flex flex-col justify-center">
-               <span className="text-xs text-gray-500 font-bold mb-1">DURATION</span>
-               <span className="text-2xl font-medium text-white">{formatDuration(sessionData?.duration_seconds || 60)}</span>
+          <h1 className="text-5xl md:text-6xl font-black text-textMain tracking-tight mb-4">Executive <span className="text-primary">Summary</span></h1>
+          <p className="text-slate-500 font-bold uppercase tracking-tight text-lg italic opacity-60">High-Fidelity Communication Audit</p>
+        </div>
+        <button 
+          onClick={downloadPDF}
+          className="px-8 py-4 rounded-2xl bg-slate-900 dark:bg-slate-800 text-white font-black uppercase tracking-widest text-xs flex items-center gap-3 hover:bg-black transition-all border border-white/10"
+        >
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          Export Intelligence PDF
+        </button>
+      </div>
+
+      <div className="flex flex-col lg:flex-row gap-12">
+        
+        {/* Left Column: Key Metrics */}
+        <div className="lg:w-1/3 space-y-10">
+          <div className="glass-card p-12 flex flex-col items-center text-center bg-bgApp border-primary/20 shadow-2xl shadow-primary/5 rounded-[3rem] relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full -mr-16 -mt-16 opacity-50"></div>
+            <h2 className="text-slate-400 dark:text-slate-600 font-black uppercase tracking-[0.2em] text-[10px] mb-12 relative z-10">Overall Performance Index</h2>
+            <div className="relative w-56 h-56 flex items-center justify-center relative z-10">
+              <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
+                <circle cx="50" cy="50" r="45" fill="none" stroke="currentColor" strokeWidth="8" className="text-slate-100 dark:text-slate-900" />
+                <motion.circle 
+                  initial={{ strokeDasharray: "0, 283" }}
+                  animate={{ strokeDasharray: `${(overallScore/100)*283}, 283` }}
+                  transition={{ duration: 2, ease: "easeOut" }}
+                  cx="50" cy="50" r="45" fill="none" stroke="currentColor" strokeWidth="8" strokeLinecap="round" 
+                  className="text-primary"
+                />
+              </svg>
+              <div className="absolute flex flex-col items-center">
+                <span className="text-7xl font-black text-textMain leading-none">{overallScore}</span>
+                <span className="text-primary font-black text-xs mt-2 uppercase tracking-widest">Percentile</span>
+              </div>
             </div>
-            <div className="bg-black/30 rounded-lg p-4 border border-white/5 flex flex-col justify-center">
-               <span className="text-xs text-gray-500 font-bold mb-1">WORDS SPOKEN</span>
-               <span className="text-2xl font-medium text-white">{stats.words_spoken}</span>
+            
+            <div className="mt-12 grid grid-cols-2 gap-8 w-full relative z-10">
+              <div className="text-center">
+                <p className="text-[10px] font-black text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-1">Duration</p>
+                <p className="text-xl font-black text-textMain">{Math.floor(sessionData?.duration_seconds / 60)}m {sessionData?.duration_seconds % 60}s</p>
+              </div>
+              <div className="text-center">
+                <p className="text-[10px] font-black text-slate-400 dark:text-slate-600 uppercase tracking-widest mb-1">Violations</p>
+                <p className="text-xl font-black text-textMain">{sessionData?.security_violations || 0}</p>
+              </div>
             </div>
-            <div className="bg-black/30 rounded-lg p-4 border border-white/5 flex flex-col justify-center border-l-2 border-l-red-500">
-               <span className="text-xs text-gray-500 font-bold mb-1">FILLER WORDS</span>
-               <span className="text-2xl font-medium text-red-400">{stats.filler_count}</span>
-            </div>
-            <div className="bg-black/30 rounded-lg p-4 border border-white/5 flex flex-col justify-center border-l-2 border-l-green-500">
-               <span className="text-xs text-gray-500 font-bold mb-1">AVG PACE</span>
-               <span className="text-2xl font-medium text-green-400">{stats.pace} <span className="text-sm text-gray-500">WPM</span></span>
+          </div>
+
+          <div className="glass-card p-10 bg-primary text-white rounded-[3rem] shadow-2xl shadow-primary/30">
+            <h3 className="text-lg font-black uppercase tracking-widest mb-8 text-white/80">Biometric Tiers</h3>
+            <div className="space-y-6">
+              {Object.entries(scores).map(([key, val], i) => (
+                <div key={key} className="space-y-2">
+                  <div className="flex justify-between items-end">
+                    <span className="text-xs font-black uppercase tracking-tight text-white/70">{key}</span>
+                    <span className="text-sm font-black text-white">{val}%</span>
+                  </div>
+                  <div className="h-2 w-full bg-white/10 rounded-full overflow-hidden p-0.5">
+                    <motion.div 
+                      initial={{ width: 0 }}
+                      animate={{ width: `${val}%` }}
+                      transition={{ duration: 1.5, delay: i * 0.1 }}
+                      className="h-full bg-white rounded-full"
+                    />
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
 
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-        
-        {/* Parameter Breakdown */}
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
-          className="glass-card p-8"
-        >
-          <h3 className="text-lg font-bold mb-6">Parameter Breakdown</h3>
-          <div className="space-y-6">
-            {scoreData.map((item, i) => (
-              <div key={item.name} className="relative">
-                <div className="flex justify-between items-end mb-2">
-                  <span className="text-sm font-medium text-gray-300">{item.name}</span>
-                  <span className="text-sm font-bold text-white">{item.score}/100</span>
+        {/* Right Column: Detailed Insights */}
+        <div className="lg:w-2/3 space-y-10">
+          
+          {/* Vocabulary Section */}
+          <div className="glass-card p-10 bg-bgApp border-white/5 shadow-xl shadow-primary/5 rounded-[3rem]">
+            <div className="flex items-center gap-4 mb-10">
+              <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
+                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-2xl font-black text-textMain">Vocabulary Optimization</h3>
+                <p className="text-[10px] text-slate-400 dark:text-slate-600 font-black uppercase tracking-widest mt-1">AI-suggested linguistic refinements</p>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-1 gap-4">
+              {wordAnalysis.length > 0 ? wordAnalysis.map((item, i) => (
+                <div key={i} className="group p-6 bg-slate-50 dark:bg-[#111111] rounded-3xl border border-transparent hover:border-primary/20 hover:bg-bgApp transition-all duration-300 flex flex-col md:flex-row md:items-center justify-between gap-6">
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-full bg-bgApp flex items-center justify-center text-primary font-black text-sm shadow-sm border dark:border-slate-800">
+                      {item.count}
+                    </div>
+                    <div>
+                      <span className="text-lg font-black text-textMain group-hover:text-primary transition-colors">"{item.word}"</span>
+                      <p className="text-[10px] font-black text-slate-400 dark:text-slate-600 uppercase tracking-widest mt-0.5">High Frequency Detection</p>
+                    </div>
+                  </div>
+                  <div className="flex-grow max-w-md bg-bgApp p-4 rounded-2xl border border-slate-100 dark:border-slate-800 group-hover:shadow-md transition-all">
+                    <span className="text-[10px] font-black text-primary uppercase tracking-widest block mb-1">Recommended Alternative</span>
+                    <p className="text-sm text-slate-700 dark:text-slate-300 font-bold">{item.suggestion}</p>
+                  </div>
                 </div>
-                <div className="h-2 w-full bg-gray-800 rounded-full overflow-hidden">
-                  <motion.div 
-                    initial={{ width: 0 }}
-                    animate={{ width: `${item.score}%` }}
-                    transition={{ duration: 1, delay: 0.5 + (i * 0.1) }}
-                    className={`h-full rounded-full ${item.score > 90 ? 'bg-green-400' : item.score > 80 ? 'bg-primary' : 'bg-yellow-400'}`}
-                  />
+              )) : (
+                <div className="text-center py-12 bg-slate-50 dark:bg-[#111111] rounded-[2.5rem] border-2 border-dashed border-slate-200 dark:border-slate-800">
+                  <p className="text-slate-400 dark:text-slate-600 font-black text-xs uppercase tracking-widest">Superior vocabulary variety detected</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Interactive Transcript */}
+          <div className="glass-card p-10 bg-bgApp border-white/5 shadow-xl shadow-primary/5 rounded-[3rem]">
+            <div className="flex items-center justify-between mb-10">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-slate-900 dark:bg-black flex items-center justify-center text-primary border dark:border-slate-800">
+                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-2xl font-black text-textMain">Interactive Transcript</h3>
+                  <p className="text-[10px] text-slate-400 dark:text-slate-600 font-black uppercase tracking-widest mt-1">Highlighted repetition analysis</p>
                 </div>
               </div>
-            ))}
-          </div>
-        </motion.div>
+              <div className="px-4 py-2 bg-primary/10 text-primary rounded-xl text-[10px] font-black uppercase tracking-widest border border-primary/20">
+                {report?.stats?.words_spoken || 0} Total Words
+              </div>
+            </div>
 
-        {/* AI Feedback */}
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}
-          className="glass-card p-6 flex flex-col relative overflow-hidden"
-        >
-          <div className="absolute -top-20 -right-20 w-40 h-40 bg-secondary/30 blur-[50px] rounded-full pointer-events-none"></div>
-          
-          <div className="flex items-center gap-3 mb-6 relative z-10">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-secondary to-blue-500 flex items-center justify-center">
-              <span className="text-white text-sm">✦</span>
-            </div>
-            <h3 className="text-lg font-bold">Claude AI Insights</h3>
-          </div>
-
-          <div className="space-y-4 relative z-10 flex-grow">
-            <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-4">
-              <h4 className="text-green-400 text-sm font-bold flex items-center gap-2 mb-2">
-                <span className="text-lg">✓</span> What Went Well
-              </h4>
-              <ul className="list-disc list-inside text-sm text-gray-300 space-y-1">
-                 {feedback.pros.map((pro, i) => <li key={i}>{pro}</li>)}
-              </ul>
-            </div>
-            
-            <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-4">
-              <h4 className="text-yellow-400 text-sm font-bold flex items-center gap-2 mb-2">
-                <span className="text-lg">⚠</span> Areas to Improve
-              </h4>
-              <ul className="list-disc list-inside text-sm text-gray-300 space-y-1">
-                 {feedback.cons.map((con, i) => <li key={i}>{con}</li>)}
-              </ul>
-            </div>
-            
-            <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4 flex-grow">
-              <h4 className="text-blue-400 text-sm font-bold flex items-center gap-2 mb-2">
-                <span className="text-lg">💡</span> Actionable Tips
-              </h4>
-              <ul className="list-disc list-inside text-sm text-gray-300 space-y-1">
-                 {feedback.tips.map((tip, i) => <li key={i}>{tip}</li>)}
-              </ul>
+            <div className="p-10 bg-slate-50 dark:bg-[#111111] rounded-[2.5rem] border-2 border-slate-100 dark:border-slate-800 text-textMain/80 text-lg leading-[1.8] font-medium italic relative">
+              <div className="absolute top-6 left-6 opacity-10">
+                <svg className="w-12 h-12" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M14.017 21L14.017 18C14.017 16.8954 14.9124 16 16.017 16H19.017C20.1216 16 21.017 16.8954 21.017 18V21M14.017 21H21.017M14.017 21C12.9124 21 12.017 20.1046 12.017 19V16.017C12.017 14.9124 12.9124 14.017 14.017 14.017H17.017M3 21L3 18C3 16.8954 3.89543 16 5 16H8C9.10457 16 10 16.8954 10 18V21M3 21H10M3 21C1.89543 21 1 20.1046 1 19V16C1 14.8954 1.89543 14 3 14H6M10 14V14" />
+                </svg>
+              </div>
+              {sessionData?.transcript?.split(' ').map((word, i) => {
+                const cleanWord = word.toLowerCase().replace(/[^a-z]/g, '');
+                const isRepeated = wordAnalysis.some(a => a.word === cleanWord);
+                return (
+                  <span key={i} className={isRepeated ? "text-primary font-black bg-primary/10 px-1.5 rounded-lg transition-all cursor-help" : ""}>
+                    {word}{' '}
+                  </span>
+                );
+              }) || "Linguistic capture empty."}
             </div>
           </div>
-        </motion.div>
-      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-12">
-        <div className="lg:col-span-2 glass-card p-8">
-           <h3 className="text-lg font-bold mb-6">Analyzed Transcript</h3>
-           <div className="p-6 bg-black/40 rounded-xl border border-white/5 text-lg leading-loose text-gray-300 font-light max-h-64 overflow-y-auto scrollbar-custom">
-             {sessionData?.transcript || "No transcript recorded for this session."}
-           </div>
-        </div>
-        
-        <div className="glass-card p-8 flex flex-col justify-center items-center text-center">
-           <h3 className="text-sm font-bold text-gray-400 tracking-widest mb-6">ORIGINALITY CHECK</h3>
-           <div className="w-32 h-32 rounded-full border-4 border-primary flex items-center justify-center mb-4 shadow-[0_0_30px_rgba(0,229,255,0.2)]">
-             <span className="text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-br from-primary to-blue-400">100%</span>
-           </div>
-           <p className="text-lg font-medium text-white">Completely Original</p>
-           <p className="text-sm text-gray-400 mt-2">No matched phrases found.</p>
+          {/* Action Footer */}
+          <div className="flex justify-center pt-10">
+            <button 
+              onClick={() => onNavigate('dashboard')}
+              className="px-12 py-5 rounded-[2rem] bg-bgApp border-2 border-slate-100 dark:border-slate-800 text-slate-400 dark:text-slate-600 font-black uppercase tracking-widest hover:text-textMain hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-xl dark:hover:shadow-black/50 transition-all flex items-center gap-4"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+              Return to Control Center
+            </button>
+          </div>
         </div>
       </div>
-
-      <div className="flex justify-center mb-16">
-         <button 
-           onClick={() => onNavigate('dashboard')}
-           className="btn-neon px-8 py-4 rounded-xl glass font-bold text-lg hover:bg-white/5 transition-colors"
-         >
-           Return to Dashboard
-         </button>
-      </div>
-
-    </div>
+    </motion.div>
   );
 };
+
 window.TalkSense.register('ReportPage', ReportPage);

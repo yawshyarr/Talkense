@@ -1,28 +1,69 @@
 /* Custom Styles that go beyond Tailwind */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
-body {
-    background-image: radial-gradient(circle at top right, #0a1128, #060B19 70%);
-    background-attachment: fixed;
-    /* cursor: none; */ /* We use a custom cursor */
+:root {
+  --primary: #064e3b; /* Deep Forest Green */
+  --accent: #10b981; /* Emerald */
+  --bg-app: #f8fafc; /* Light Gray/White */
+  --bg-sidebar: #ffffff;
+  --bg-card: #ffffff;
+  --text-main: #0f172a;
+  --text-muted: #64748b;
+  --border-subtle: #e2e8f0;
 }
 
-/* Glassmorphism Classes */
+[data-theme='dark'] {
+  --primary: #1e40af; /* Rich Blue */
+  --accent: #3b82f6; /* Lighter Blue */
+  --bg-app: #000000; /* Black */
+  --bg-sidebar: #0a0a0a;
+  --bg-card: #111111;
+  --text-main: #ffffff; /* Normal White */
+  --text-muted: #94a3b8;
+  --border-subtle: #1e293b;
+}
+
+body {
+    background-color: var(--bg-app);
+    color: var(--text-main);
+    font-family: 'Inter', sans-serif;
+    transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Light Mode Glassmorphism */
 .glass {
-    background: rgba(255, 255, 255, 0.05);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+    background: rgba(255, 255, 255, 0.8);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--border-subtle);
 }
 
 .glass-card {
-    background: rgba(10, 20, 45, 0.6);
-    backdrop-filter: blur(12px);
-    border: 1px solid rgba(0, 229, 255, 0.2);
-    border-radius: 16px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: 20px;
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
+    transition: all 0.2s ease;
 }
+
+.glass-card:hover {
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05);
+    border-color: var(--accent);
+}
+
+.btn-primary {
+  background-color: var(--primary);
+  color: #ffffff;
+  @apply font-semibold py-3 px-6 rounded-xl transition-all shadow-lg;
+}
+
+.btn-primary:hover {
+  filter: brightness(1.1);
+}
+
+.text-primary { color: var(--primary); }
+.text-secondary { color: var(--secondary); }
+.bg-primary { background-color: var(--primary); }
+.bg-secondary { background-color: var(--secondary); }
 
 /* Neon Glows */
 .neon-text-primary {

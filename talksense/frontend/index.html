@@ -10,12 +10,14 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
+        darkMode: 'selector',
         theme: {
           extend: {
             colors: {
-              navy: '#060B19',
-              primary: '#00E5FF',
-              secondary: '#B415FF',
+              primary: 'var(--primary)',
+              bgApp: 'var(--bg-app)',
+              textMain: 'var(--text-main)',
+              accent: 'var(--accent)',
             },
             fontFamily: {
               sans: ['Inter', 'sans-serif'],
@@ -33,16 +35,25 @@
     <!-- Load Framer Motion via UMD -->
     <script src="https://cdn.jsdelivr.net/npm/framer-motion@10.12.16/dist/framer-motion.js" crossorigin></script>
     
+    <!-- Load PDF Export Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+    <!-- Load MediaPipe for Real AI Face/Gaze Tracking -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils"></script>
+    
 
     
     <!-- Custom CSS -->
     <link rel="stylesheet" href="/styles/index.css" />
   </head>
-  <body class="bg-navy text-white min-h-screen">
+  <body class="bg-bgApp text-textMain min-h-screen transition-colors duration-300">
     <div id="root">
-      <div style="background:#0a1128; color:white; min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; font-family:sans-serif;">
-        <div style="width: 50px; height: 50px; border: 3px solid rgba(0,242,254,0.1); border-top-color: #00f2fe; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px;"></div>
-        <h1 style="color:#00f2fe; font-size: 1.2rem; letter-spacing: 2px; font-weight: 300;">TALKSENSE</h1>
+      <div style="background:var(--bg-app, #f8fafc); color:var(--primary, #064e3b); min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; font-family:sans-serif;">
+        <div style="width: 50px; height: 50px; border: 3px solid rgba(6,78,59,0.1); border-top-color: var(--primary, #064e3b); border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px;"></div>
+        <h1 style="color:var(--primary, #064e3b); font-size: 1.2rem; letter-spacing: 4px; font-weight: 900;">TALKSENSE</h1>
       </div>
     </div>
 
@@ -88,6 +99,8 @@
     <script type="text/babel" data-presets="react,env" src="components/Navbar.jsx"></script>
     <script type="text/babel" data-presets="react,env" src="pages/LandingPage.jsx"></script>
     <script type="text/babel" data-presets="react,env" src="pages/AuthPages.jsx"></script>
+    <script type="text/babel" data-presets="react,env" src="pages/AICoachPage.jsx"></script>
+    <script type="text/babel" data-presets="react,env" src="pages/VocabPage.jsx"></script>
     <script type="text/babel" data-presets="react,env" src="pages/DashboardPage.jsx"></script>
     <script type="text/babel" data-presets="react,env" src="pages/SetupPage.jsx"></script>
     <script type="text/babel" data-presets="react,env" src="pages/LiveSpeechPage.jsx"></script>

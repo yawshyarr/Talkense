@@ -5,7 +5,7 @@ function App() {
   console.log("App component initializing...");
   const { 
     LandingPage, LoginPage, RegisterPage, Dashboard, 
-    SetupPage, LiveSpeechPage, ReportPage, Navbar,
+    SetupPage, LiveSpeechPage, ReportPage, AICoachPage, VocabPage, Navbar,
     motion, AnimatePresence
   } = window;
 
@@ -16,8 +16,28 @@ function App() {
   const [currentPage, setCurrentPage] = useState('landing');
   const [pageData, setPageData] = useState(null);
   const [user, setUser] = useState(null);
+  const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light');
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme(prev => prev === 'light' ? 'dark' : 'light');
+  };
+
+  useEffect(() => {
+    console.log("App re-rendered. Current page:", currentPage, "User:", user, "Theme:", theme);
+  }, [currentPage, user, theme]);
+
+  const handleSetUser = (u) => {
+    console.log("Setting user state:", u);
+    setUser(u);
+  };
 
   const navigate = (page, data = null) => {
+    console.log("Navigating to:", page, "with data:", data);
     setCurrentPage(page);
     setPageData(data);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -28,27 +48,39 @@ function App() {
       case 'landing':
         return <LandingPage onNavigate={navigate} />;
       case 'login':
-        return <LoginPage onNavigate={navigate} setUser={setUser} />;
+        return <LoginPage onNavigate={navigate} setUser={handleSetUser} />;
       case 'register':
-        return <RegisterPage onNavigate={navigate} setUser={setUser} />;
+        return <RegisterPage onNavigate={navigate} setUser={handleSetUser} />;
       case 'dashboard':
-        return <Dashboard user={user} onNavigate={navigate} />;
+        return <Dashboard user={user} onNavigate={navigate} theme={theme} toggleTheme={toggleTheme} />;
       case 'setup':
         return <SetupPage onNavigate={navigate} />;
       case 'live':
         return <LiveSpeechPage onNavigate={navigate} config={pageData} />;
       case 'report':
         return <ReportPage onNavigate={navigate} sessionData={pageData} />;
+      case 'coach':
+        return <AICoachPage user={user} onNavigate={navigate} />;
+      case 'vocab':
+        return <VocabPage user={user} onNavigate={navigate} />;
       default:
         return <LandingPage onNavigate={navigate} />;
     }
   };
 
   return (
-    <div className="font-sans text-gray-100 min-h-screen flex flex-col">
-      <Navbar user={user} onNavigate={navigate} onLogout={() => { setUser(null); navigate('landing'); }} />
+    <div className="font-sans min-h-screen flex flex-col transition-colors duration-300">
+      {currentPage !== 'dashboard' && (
+        <Navbar 
+          user={user} 
+          onNavigate={navigate} 
+          onLogout={() => { handleSetUser(null); navigate('landing'); }} 
+          theme={theme}
+          toggleTheme={toggleTheme}
+        />
+      )}
       
-      <main className="flex-grow pt-20 pb-12">
+      <main className={`flex-grow ${currentPage === 'dashboard' ? 'pt-0' : 'pt-24'} pb-12`}>
         <AnimatePresence mode="wait">
           {renderPage()}
         </AnimatePresence>
