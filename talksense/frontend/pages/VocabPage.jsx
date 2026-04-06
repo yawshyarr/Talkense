@@ -1,7 +1,7 @@
 console.log("VocabPage.jsx script executing...");
-const { motion, AnimatePresence } = window;
 
 const VocabPage = ({ user, onNavigate }) => {
+  const { motion, AnimatePresence } = window;
   const [searchWord, setSearchWord] = useState('');
   const [wordData, setWordData] = useState(null);
   const [loading, setLoading] = useState(false);

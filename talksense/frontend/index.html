@@ -27,13 +27,15 @@
       }
     </script>
     
-    <!-- Load React, ReactDOM, and Babel -->
+    <!-- External Dependencies -->
     <script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.production.min.js" crossorigin></script>
     <script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://cdn.jsdelivr.net/npm/prop-types/prop-types.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/classnames/index.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.24.0/babel.min.js" crossorigin></script>
 
     <!-- Load Framer Motion via UMD -->
-    <script src="https://cdn.jsdelivr.net/npm/framer-motion@10.12.16/dist/framer-motion.js" crossorigin></script>
+    <script src="https://cdn.jsdelivr.net/npm/framer-motion@10.16.4/dist/framer-motion.js"></script>
     
     <!-- Load PDF Export Library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -45,6 +47,9 @@
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils"></script>
     
 
+    
+    <!-- Load Recharts via UMD - UNPKG is more reliable for UMD builds -->
+    <script src="https://unpkg.com/recharts/dist/Recharts.js"></script>
     
     <!-- Custom CSS -->
     <link rel="stylesheet" href="/styles/index.css" />
@@ -65,24 +70,46 @@
       // Global Component Registry
       window.TalkSense = {
         register: function(name, component) {
+          console.log("Registering component:", name);
           window[name] = component;
         }
       };
       
       // Setup global environment for Babel components
-      if (typeof React !== 'undefined') {
-        const { useState, useEffect, useMemo, useCallback, useRef } = React;
-        window.useState = useState;
-        window.useEffect = useEffect;
-        window.useMemo = useMemo;
-        window.useCallback = useCallback;
-        window.useRef = useRef;
-      }
-      
-      if (window.Motion) {
-        window.motion = window.Motion.motion;
-        window.AnimatePresence = window.Motion.AnimatePresence;
-      }
+      const setupGlobals = () => {
+        console.log("Global setup initializing...");
+        if (typeof React !== 'undefined') {
+          const { useState, useEffect, useMemo, useCallback, useRef } = React;
+          window.useState = useState;
+          window.useEffect = useEffect;
+          window.useMemo = useMemo;
+          window.useCallback = useCallback;
+          window.useRef = useRef;
+        }
+        
+        if (window.Motion) {
+          window.motion = window.Motion.motion;
+          window.AnimatePresence = window.Motion.AnimatePresence;
+        }
+
+        // Try standard Recharts name or the umd-wrapped Recharts name
+        const R = window.Recharts;
+        if (R) {
+          console.log("Recharts detected successfully.");
+          const components = [
+            'LineChart', 'Line', 'AreaChart', 'Area', 'XAxis', 'YAxis', 'CartesianGrid', 
+            'Tooltip', 'ResponsiveContainer', 'BarChart', 'Bar', 'Cell', 'PieChart', 'Pie'
+          ];
+          components.forEach(comp => {
+            window[comp] = R[comp];
+          });
+        } else {
+          console.warn("Recharts not found on window. Retrying in 250ms...");
+          setTimeout(setupGlobals, 250);
+        }
+      };
+
+      setupGlobals();
     </script>
     
     <!-- Custom Cursor Element -->
@@ -97,14 +124,17 @@
     </script>
     
     <script type="text/babel" data-presets="react,env" src="components/Navbar.jsx"></script>
+    <!-- Load Page Components -->
+    <script type="text/babel" data-presets="react,env" src="pages/AnalyticsPage.jsx"></script>
     <script type="text/babel" data-presets="react,env" src="pages/LandingPage.jsx"></script>
     <script type="text/babel" data-presets="react,env" src="pages/AuthPages.jsx"></script>
-    <script type="text/babel" data-presets="react,env" src="pages/AICoachPage.jsx"></script>
-    <script type="text/babel" data-presets="react,env" src="pages/VocabPage.jsx"></script>
-    <script type="text/babel" data-presets="react,env" src="pages/DashboardPage.jsx"></script>
     <script type="text/babel" data-presets="react,env" src="pages/SetupPage.jsx"></script>
     <script type="text/babel" data-presets="react,env" src="pages/LiveSpeechPage.jsx"></script>
     <script type="text/babel" data-presets="react,env" src="pages/ReportPage.jsx"></script>
+    <script type="text/babel" data-presets="react,env" src="pages/AICoachPage.jsx"></script>
+    <script type="text/babel" data-presets="react,env" src="pages/VocabPage.jsx"></script>
+    <script type="text/babel" data-presets="react,env" src="pages/SpeechLabPage.jsx"></script>
+    <script type="text/babel" data-presets="react,env" src="pages/DashboardPage.jsx"></script>
     
     <!-- Main App Entry in Babel -->
     <script type="text/babel" data-presets="react,env" src="app.jsx"></script>
@@ -112,11 +142,17 @@
     <script type="text/babel">
       // This runs after Babel has compiled and executed the other scripts
       setTimeout(() => {
+        console.log("FINAL SYSTEM CHECK:");
+        console.log("Navbar:", !!window.Navbar);
+        console.log("Dashboard:", !!window.Dashboard);
+        console.log("AnalyticsPage:", !!window.AnalyticsPage);
+        console.log("App:", !!window.App);
+        
         if (window.App) {
           const root = ReactDOM.createRoot(document.getElementById('root'));
           root.render(<App />);
         }
-      }, 1500);
+      }, 2000); // Increased delay for all Babel scripts to compile
     </script>
 
     <script>

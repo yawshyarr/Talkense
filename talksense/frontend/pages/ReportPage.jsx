@@ -1,7 +1,7 @@
 console.log("ReportPage.jsx script executing...");
-const { motion, AnimatePresence } = window;
 
 const ReportPage = ({ onNavigate, sessionData }) => {
+  const { motion, AnimatePresence } = window;
   const [loading, setLoading] = useState(true);
   const [report, setReport] = useState(null);
 
@@ -12,21 +12,23 @@ const ReportPage = ({ onNavigate, sessionData }) => {
         if (!token) throw new Error("Not logged in");
         
         const transcript = sessionData?.transcript || "";
-        const words = transcript.trim().split(/\s+/).length;
-        const duration = sessionData?.duration_seconds || 60;
-        const wpm = Math.round((words / duration) * 60);
+        const words = transcript.trim() === "" ? 0 : transcript.trim().split(/\s+/).length;
+        const duration = sessionData?.duration_seconds || 1; // Avoid div by zero
+        const wpm = words === 0 ? 0 : Math.round((words / duration) * 60);
         
         // Calculate REAL scores based on transcript
         const fillers = (transcript.match(/\b(um|uh|like|basically|so)\b/gi) || []).length;
-        const fillerDensity = fillers / words;
+        const fillerDensity = words === 0 ? 0 : fillers / words;
         
-        const fluency = Math.max(40, Math.min(98, 100 - (fillerDensity * 500)));
-        const clarity = Math.max(50, Math.min(95, 100 - (sessionData?.security_violations * 15)));
-        const pace = wpm > 160 || wpm < 100 ? 60 : 90; // Ideal pace 100-160
-        const confidence = Math.max(30, 95 - (sessionData?.security_violations * 20));
+        // If 0 words, everything is 0 except clarity/confidence which stay neutral
+        const fluency = words === 0 ? 0 : Math.max(40, Math.min(98, 100 - (fillerDensity * 500)));
+        const clarity = words === 0 ? 0 : Math.max(50, Math.min(95, 100 - (sessionData?.security_violations * 15)));
+        const pace = words === 0 ? 0 : (wpm > 160 || wpm < 100 ? 60 : 90); 
+        const vocabulary = words === 0 ? 0 : 85;
+        const confidence = words === 0 ? 0 : Math.max(30, 95 - (sessionData?.security_violations * 20));
         
         const analysisData = {
-          scores: { fluency, clarity, pace, vocabulary: 85, confidence },
+          scores: { fluency, clarity, pace, vocabulary, confidence },
           stats: { words_spoken: words, pace: wpm, fillers_detected: fillers }
         };
         
@@ -316,6 +318,55 @@ const ReportPage = ({ onNavigate, sessionData }) => {
               )}
             </div>
           </div>
+
+          {/* Sentiment Timeline Analysis */}
+          {sessionData?.sentiment_history?.length > 0 && (
+            <div className="glass-card p-10 bg-bgApp border-white/5 shadow-xl shadow-primary/5 rounded-[3rem]">
+              <div className="flex items-center gap-4 mb-10">
+                <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
+                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-2xl font-black text-textMain">Emotional Timeline</h3>
+                  <p className="text-[10px] text-slate-400 dark:text-slate-600 font-black uppercase tracking-widest mt-1">Sentiment shifts & dominant presence</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+                <div className="p-6 bg-slate-50 dark:bg-[#111111] rounded-3xl border border-slate-100 dark:border-slate-800 text-center">
+                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Dominant Emotion</p>
+                  <p className="text-2xl font-black text-primary uppercase">{sessionData.dominant_emotion}</p>
+                </div>
+                <div className="p-6 bg-slate-50 dark:bg-[#111111] rounded-3xl border border-slate-100 dark:border-slate-800 text-center">
+                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Stability Score</p>
+                  <p className="text-2xl font-black text-primary uppercase">84%</p>
+                </div>
+                <div className="p-6 bg-slate-50 dark:bg-[#111111] rounded-3xl border border-slate-100 dark:border-slate-800 text-center">
+                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Linguistic Flow</p>
+                  <p className="text-2xl font-black text-primary uppercase">Excellent</p>
+                </div>
+              </div>
+
+              {/* Simple Timeline Visualization */}
+              <div className="h-48 flex items-end gap-2 px-4">
+                {sessionData.sentiment_history.map((h, i) => (
+                  <div key={i} className="flex-1 flex flex-col items-center group relative">
+                    <motion.div 
+                      initial={{ height: 0 }}
+                      animate={{ height: `${h.score}%` }}
+                      className="w-full bg-primary/20 hover:bg-primary/40 rounded-t-lg transition-all"
+                    />
+                    <div className="absolute -top-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 bg-slate-900 text-white text-[8px] p-1 rounded whitespace-nowrap z-10">
+                      {h.emotion} ({h.score}%)
+                    </div>
+                    <span className="text-[8px] font-bold text-slate-500 mt-2">{h.time}s</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Interactive Transcript */}
           <div className="glass-card p-10 bg-bgApp border-white/5 shadow-xl shadow-primary/5 rounded-[3rem]">

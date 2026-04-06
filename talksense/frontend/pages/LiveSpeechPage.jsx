@@ -1,7 +1,7 @@
 console.log("LiveSpeechPage.jsx script executing...");
-const { motion, AnimatePresence } = window;
 
 const VoiceVisualizer = ({ isRecording }) => {
+  const { motion, AnimatePresence } = window;
   const canvasRef = useRef(null);
   const requestRef = useRef();
   const audioContextRef = useRef();
@@ -121,6 +121,7 @@ const VoiceVisualizer = ({ isRecording }) => {
 };
 
 const LiveSpeechPage = ({ onNavigate, config }) => {
+  const { motion, AnimatePresence } = window;
   const [transcript, setTranscript] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [timer, setTimer] = useState(config?.duration_seconds || 60);
@@ -129,6 +130,18 @@ const LiveSpeechPage = ({ onNavigate, config }) => {
   const [sentiment, setSentiment] = useState({ label: 'Calibrating...', confidence: 0 });
   const [securityBreach, setSecurityAlert] = useState(null);
   const [isTerminated, setIsTerminated] = useState(false);
+  const [countdown, setCountdown] = useState(null);
+
+  // Sentiment Analysis States
+  const [sentimentHistory, setSentimentHistory] = useState([]);
+  const [currentSentiment, setCurrentSentiment] = useState({ emotion: 'Neutral', score: 50 });
+  const [audioMetrics, setAudioMetrics] = useState({ pitch: 0, volume: 0, wpm: 0 });
+  
+  const audioContextRef = useRef(null);
+  const analyserRef = useRef(null);
+  const sentimentInterval = useRef(null);
+  const lastProcessedIndex = useRef(0);
+  const startTime = useRef(null);
 
   // New Movement Tracking States
   const [faceDetected, setFaceDetected] = useState(false);
@@ -335,8 +348,18 @@ const LiveSpeechPage = ({ onNavigate, config }) => {
     const startCamera = async () => {
       try {
         stream = await navigator.mediaDevices.getUserMedia({ 
-            video: { width: 640, height: 480, frameRate: 15 } 
+            video: { width: 640, height: 480, frameRate: 15 },
+            audio: true
         });
+
+        // Initialize Web Audio API for Sentiment
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        audioContextRef.current = new AudioContext();
+        analyserRef.current = audioContextRef.current.createAnalyser();
+        const source = audioContextRef.current.createMediaStreamSource(stream);
+        source.connect(analyserRef.current);
+        analyserRef.current.fftSize = 2048;
+
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
           
@@ -355,7 +378,7 @@ const LiveSpeechPage = ({ onNavigate, config }) => {
             camera.start();
           }
         }
-      } catch (err) { console.error("Camera access failed:", err); }
+      } catch (err) { console.error("Camera/Audio access failed:", err); }
     };
     
     if (isRecording) startCamera();
@@ -363,29 +386,99 @@ const LiveSpeechPage = ({ onNavigate, config }) => {
     return () => {
       if (stream) stream.getTracks().forEach(t => t.stop());
       if (camera) camera.stop();
+      if (audioContextRef.current) audioContextRef.current.close();
     };
   }, [isRecording]);
 
-  // Sentiment analysis still correlated with fillers
+  // Real-time Sentiment Analysis Loop (Every 5 seconds for quicker feedback)
   useEffect(() => {
     if (isRecording && !isTerminated) {
-        proctoringInterval.current = setInterval(() => {
-            const fillers = (transcript.match(/\b(um|uh|like|basically|so)\b/gi) || []).length;
-            const labels = fillers > 3 ? ['Nervous', 'Hesitant', 'Thinking'] : ['Confident', 'Articulate', 'Calm', 'Engaged'];
-            const selected = labels[Math.floor(Math.random() * labels.length)];
-            setSentiment({ label: selected, confidence: Math.floor(60 + Math.random() * 35) });
-        }, 5000);
+      startTime.current = Date.now();
+      sentimentInterval.current = setInterval(async () => {
+        if (!analyserRef.current) return;
+
+        // 1. Extract Pitch and Volume
+        const freqData = new Uint8Array(analyserRef.current.frequencyBinCount);
+        analyserRef.current.getByteFrequencyData(freqData);
+        const avgPitch = freqData.reduce((a, b) => a + b, 0) / freqData.length;
+
+        const timeData = new Uint8Array(analyserRef.current.fftSize);
+        analyserRef.current.getByteTimeDomainData(timeData);
+        let sumSq = 0;
+        for (let i = 0; i < timeData.length; i++) {
+          const val = (timeData[i] - 128) / 128;
+          sumSq += val * val;
+        }
+        const avgVolume = Math.sqrt(sumSq / timeData.length) * 100;
+
+        // 2. Extract Speech Metrics
+        const currentTranscript = transcript;
+        const chunk = currentTranscript.split(' ').slice(lastProcessedIndex.current).join(' ');
+        lastProcessedIndex.current = currentTranscript.split(' ').length;
+        
+        const wpm = (chunk.split(' ').length / 5) * 60; // Now 5s chunk
+        const fillers = (chunk.match(/\b(um|uh|like|basically|so)\b/gi) || []).length;
+        const pauses = (chunk.match(/\.\.\.|\s\s+/g) || []).length;
+
+        setAudioMetrics({ pitch: avgPitch, volume: avgVolume, wpm });
+
+        // 3. Send to Claude AI
+        try {
+          const token = localStorage.getItem('token');
+          const response = await fetch('http://localhost:8003/api/analyze/sentiment', {
+            method: 'POST',
+            headers: { 
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              transcript_chunk: chunk || "No speech detected",
+              avg_pitch: avgPitch,
+              avg_volume: avgVolume,
+              words_per_minute: wpm,
+              filler_word_count: fillers,
+              pause_count: pauses
+            })
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            setCurrentSentiment(data);
+            setSentimentHistory(prev => [...prev, { 
+              time: Math.round((Date.now() - startTime.current) / 1000), 
+              score: data.score,
+              emotion: data.emotion 
+            }]);
+          }
+        } catch (err) { console.error("Sentiment API failed:", err); }
+
+      }, 5000); // Faster updates
     }
-    return () => clearInterval(proctoringInterval.current);
+    return () => {
+      clearInterval(sentimentInterval.current);
+      lastProcessedIndex.current = 0;
+    };
   }, [isRecording, isTerminated, transcript]);
 
   const handleStart = () => {
-    if (isTerminated) return;
-    setIsRecording(true);
-    if (recognitionRef.current) {
-      try { recognitionRef.current.start(); } catch (e) {}
-    }
+    if (isTerminated || countdown !== null) return;
+    setCountdown(3);
   };
+
+  useEffect(() => {
+    if (countdown === null) return;
+    
+    if (countdown > 0) {
+      const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
+      return () => clearTimeout(timer);
+    } else {
+      setCountdown(null);
+      setIsRecording(true);
+      if (recognitionRef.current) {
+        try { recognitionRef.current.start(); } catch (e) {}
+      }
+    }
+  }, [countdown]);
 
   const handleStop = (forced = false) => {
     setIsRecording(false);
@@ -398,7 +491,12 @@ const LiveSpeechPage = ({ onNavigate, config }) => {
       topic: config.topic,
       difficulty: config.difficulty,
       security_violations: warnings,
-      is_terminated: forced || warnings >= 3
+      is_terminated: forced || warnings >= 3,
+      sentiment_history: sentimentHistory,
+      dominant_emotion: [...sentimentHistory].sort((a,b) => 
+        sentimentHistory.filter(v => v.emotion === a.emotion).length - 
+        sentimentHistory.filter(v => v.emotion === b.emotion).length
+      ).pop()?.emotion || 'Neutral'
     });
   };
 
@@ -427,6 +525,36 @@ const LiveSpeechPage = ({ onNavigate, config }) => {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
             </svg>
             {securityBreach || proctoringAlert}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {countdown !== null && (
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.5 }}
+            animate={{ opacity: 1, scale: 1.2 }}
+            exit={{ opacity: 0, scale: 2 }}
+            className="fixed inset-0 z-[120] flex items-center justify-center bg-bgApp/80 backdrop-blur-md"
+          >
+            <div className="relative">
+              <motion.div 
+                animate={{ rotate: 360 }}
+                transition={{ repeat: Infinity, duration: 2, ease: "linear" }}
+                className="w-64 h-64 border-4 border-dashed border-primary/30 rounded-full"
+              />
+              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                <motion.span 
+                  key={countdown}
+                  initial={{ y: 20, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  className="text-9xl font-black text-primary drop-shadow-[0_0_30px_rgba(16,185,129,0.5)]"
+                >
+                  {countdown === 0 ? "GO!" : countdown}
+                </motion.span>
+                <span className="text-xs font-black uppercase tracking-[0.5em] text-slate-500 mt-4">Calibrating biometrics</span>
+              </div>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -517,6 +645,85 @@ const LiveSpeechPage = ({ onNavigate, config }) => {
                 />
               </div>
             )}
+          </div>
+
+          {/* Sentiment Analysis Panel */}
+          <div className="glass-card p-8 space-y-6 bg-bgApp relative overflow-hidden">
+            <div className="flex justify-between items-center">
+              <h3 className="text-xs font-black text-slate-500 uppercase tracking-[0.2em]">Live Sentiment</h3>
+              <motion.div 
+                key={currentSentiment.emotion}
+                initial={{ scale: 0.5, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                className="flex items-center gap-2 bg-primary/10 px-3 py-1.5 rounded-full border border-primary/20 shadow-[0_0_15px_rgba(16,185,129,0.1)]"
+              >
+                <div className="relative w-5 h-5 flex items-center justify-center">
+                  <motion.div 
+                    animate={{ scale: [1, 1.2, 1] }}
+                    transition={{ repeat: Infinity, duration: 2 }}
+                    className="absolute inset-0 bg-primary/20 rounded-full"
+                  />
+                  {currentSentiment.emotion === 'Confident' && (
+                    <svg className="w-4 h-4 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  )}
+                  {currentSentiment.emotion === 'Nervous' && (
+                    <svg className="w-4 h-4 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                  )}
+                  {currentSentiment.emotion === 'Stressed' && (
+                    <svg className="w-4 h-4 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                  )}
+                  {currentSentiment.emotion === 'Focused' && (
+                    <svg className="w-4 h-4 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    </svg>
+                  )}
+                  {currentSentiment.emotion === 'Neutral' && (
+                    <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 12h14" />
+                    </svg>
+                  )}
+                </div>
+                <span className="text-[10px] font-black text-primary uppercase tracking-tighter">{currentSentiment.emotion}</span>
+              </motion.div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="flex justify-between items-end">
+                <span className="text-[10px] font-bold text-slate-400 uppercase">Confidence Meter</span>
+                <span className="text-[10px] font-mono text-primary">{currentSentiment.score}%</span>
+              </div>
+              <div className="h-2 w-full bg-slate-800 rounded-full overflow-hidden">
+                <motion.div 
+                  animate={{ width: `${currentSentiment.score}%` }}
+                  className="h-full bg-gradient-to-r from-blue-500 to-primary"
+                />
+              </div>
+            </div>
+
+            {/* Mini Sentiment Graph */}
+            <div className="h-16 flex items-end gap-1">
+              {sentimentHistory.slice(-15).map((h, i) => (
+                <motion.div 
+                  key={i}
+                  initial={{ height: 0 }}
+                  animate={{ height: `${h.score}%` }}
+                  className="flex-1 bg-primary/40 rounded-t-sm"
+                  title={`${h.emotion}: ${h.score}%`}
+                />
+              ))}
+              {sentimentHistory.length === 0 && (
+                <div className="w-full h-full flex items-center justify-center opacity-20 text-[8px] font-bold uppercase">
+                  Gathering Data...
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Movement Indicators Panel */}

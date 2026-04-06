@@ -1,7 +1,7 @@
 console.log("AuthPages.jsx script executing...");
-const { motion, AnimatePresence } = window;
 
 const AuthLayout = ({ children, title, subtitle }) => {
+  const motion = window.motion || { div: 'div' };
   return (
     <div className="min-h-screen flex items-center justify-center relative px-6 bg-[#f8fafc] dark:bg-black transition-colors duration-300">
       <div className="absolute top-0 left-0 w-full h-full pointer-events-none opacity-20">

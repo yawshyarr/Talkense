@@ -1,7 +1,7 @@
 console.log("DashboardPage.jsx script executing...");
-const { motion, AnimatePresence } = window;
 
 const Dashboard = ({ user, onNavigate, theme, toggleTheme }) => {
+  const { motion, AnimatePresence } = window;
   const [recentSessions, setRecentSessions] = useState([]);
   const [stats, setStats] = useState({ avgScore: 0, total: 0, words: 0, wpm: 0, scoresHistory: [] });
   
@@ -102,6 +102,8 @@ const Dashboard = ({ user, onNavigate, theme, toggleTheme }) => {
     ) }
   ];
 
+  const currentPath = onNavigate === undefined ? 'dashboard' : ''; // Fallback check
+
   const generalLinks = [
     { name: 'Settings', icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -141,14 +143,17 @@ const Dashboard = ({ user, onNavigate, theme, toggleTheme }) => {
               {menuLinks.map(link => (
                 <button 
                   key={link.id}
-                  onClick={() => {
-                    if (link.id === 'coach') {
-                      onNavigate('coach');
-                    } else if (link.id === 'vocab') {
-                      onNavigate('vocab');
-                    } else if (link.id === 'dashboard') {
-                      onNavigate('dashboard');
+                  onClick={(e) => {
+                    e.preventDefault();
+                    console.log("CRITICAL: Sidebar button clicked for:", link.id);
+                    if (link.id === 'coach') onNavigate('coach');
+                    else if (link.id === 'vocab') onNavigate('vocab');
+                    else if (link.id === 'analytics') onNavigate('analytics');
+                    else if (link.id === 'lab') {
+                      console.log("CRITICAL: Navigating to lab...");
+                      onNavigate('lab');
                     }
+                    else if (link.id === 'dashboard') onNavigate('dashboard');
                   }}
                   className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all ${link.active ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-900'}`}
                 >

@@ -1,7 +1,7 @@
 console.log("LandingPage.jsx script executing...");
-const { motion, AnimatePresence } = window;
 
 const LandingPage = ({ onNavigate }) => {
+  const { motion, AnimatePresence } = window;
   const features = [
     {
       title: "Real-time AI Analysis",

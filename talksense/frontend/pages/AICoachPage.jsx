@@ -1,7 +1,7 @@
 console.log("AICoachPage.jsx script executing...");
-const { motion, AnimatePresence } = window;
 
 const AICoachPage = ({ user, onNavigate }) => {
+  const { motion, AnimatePresence } = window;
   const [messages, setMessages] = useState([
     { role: 'assistant', content: "Hello! I'm your TalkSense AI Coach. I'm here to help you improve your speech, confidence, and presence. Do you have any grammatical questions or doubts about your recent sessions?" }
   ]);

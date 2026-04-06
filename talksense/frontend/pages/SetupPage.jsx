@@ -1,7 +1,7 @@
 console.log("SetupPage.jsx script executing...");
-const { motion, AnimatePresence } = window;
 
 const SetupPage = ({ onNavigate }) => {
+  const { motion, AnimatePresence } = window;
   const [topic, setTopic] = useState('');
   const [duration, setDuration] = useState(60);
   const [difficulty, setDifficulty] = useState('Intermediate');
@@ -97,19 +97,33 @@ const SetupPage = ({ onNavigate }) => {
             </div>
           </div>
 
-          <div className="space-y-4">
-            <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] px-2">Session Intensity Duration</label>
-            <div className="grid grid-cols-3 gap-6">
-              {[60, 120, 300].map(sec => (
-                <button
-                  key={sec}
-                  onClick={() => setDuration(sec)}
-                  className={`relative py-6 rounded-[2rem] font-black text-lg transition-all border-2 overflow-hidden group ${duration === sec ? 'bg-primary border-primary text-white shadow-xl shadow-primary/30' : 'bg-bgApp border-slate-100 dark:border-slate-800 text-slate-400 dark:text-slate-600 hover:border-primary/50 hover:bg-primary/5'}`}
-                >
-                  <span className="relative z-10">{sec/60}m</span>
-                  <span className={`text-[10px] block opacity-50 relative z-10 ${duration === sec ? 'text-white/70' : 'text-slate-300 dark:text-slate-700'}`}>Limited</span>
-                </button>
-              ))}
+          <div className="space-y-6">
+            <div className="flex items-center justify-between px-2">
+              <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em]">Session Intensity Duration</label>
+              <span className="text-primary font-mono font-bold text-lg">{Math.floor(duration/60)}:{(duration%60).toString().padStart(2, '0')}</span>
+            </div>
+            
+            <div className="relative pt-4 pb-8">
+              <input 
+                type="range" 
+                min="30" 
+                max="600" 
+                step="30"
+                value={duration}
+                onChange={(e) => setDuration(parseInt(e.target.value))}
+                className="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-lg appearance-none cursor-pointer accent-primary"
+              />
+              <div className="flex justify-between mt-4">
+                {[60, 120, 300, 600].map(val => (
+                  <button 
+                    key={val}
+                    onClick={() => setDuration(val)}
+                    className={`text-[10px] font-black uppercase tracking-tighter px-3 py-1.5 rounded-lg transition-all ${duration === val ? 'bg-primary text-white shadow-lg' : 'bg-slate-50 dark:bg-slate-900 text-slate-400 hover:text-primary'}`}
+                  >
+                    {val < 60 ? `${val}s` : `${val/60}m`}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
