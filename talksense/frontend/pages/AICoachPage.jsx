@@ -1,6 +1,6 @@
 console.log("AICoachPage.jsx script executing...");
 
-const AICoachPage = ({ user, onNavigate }) => {
+const AICoachPage = ({ user, onNavigate, goBack, canGoBack }) => {
   const { motion, AnimatePresence } = window;
   const [messages, setMessages] = useState([
     { role: 'assistant', content: "Hello! I'm your TalkSense AI Coach. I'm here to help you improve your speech, confidence, and presence. Do you have any grammatical questions or doubts about your recent sessions?" }
@@ -26,7 +26,7 @@ const AICoachPage = ({ user, onNavigate }) => {
 
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:8003/api/coach/chat', {
+      const response = await fetch('http://127.0.0.1:8000/api/coach/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -75,10 +75,10 @@ const AICoachPage = ({ user, onNavigate }) => {
             </div>
           </div>
           <button 
-            onClick={() => onNavigate('dashboard')}
+            onClick={() => canGoBack ? goBack() : onNavigate('dashboard')}
             className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold text-xs uppercase tracking-widest hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
           >
-            Back to Dashboard
+            {canGoBack ? 'Go Back' : 'Back to Dashboard'}
           </button>
         </div>
 

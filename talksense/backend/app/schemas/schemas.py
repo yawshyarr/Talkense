@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
@@ -12,9 +12,7 @@ class UserCreate(UserBase):
 class UserSchema(UserBase):
     id: int
     streak_count: int
-
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 class SessionCreate(BaseModel):
     topic: str
@@ -26,9 +24,7 @@ class SessionSchema(SessionCreate):
     id: int
     user_id: int
     date: datetime
-
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 class Token(BaseModel):
     access_token: str

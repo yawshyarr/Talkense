@@ -44,7 +44,7 @@ const LoginPage = ({ onNavigate, setUser }) => {
       formData.append('username', email);
       formData.append('password', password);
       
-      const tokenRes = await fetch('http://localhost:8003/api/auth/login', {
+      const tokenRes = await fetch('http://127.0.0.1:8000/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: formData
@@ -54,11 +54,16 @@ const LoginPage = ({ onNavigate, setUser }) => {
       const tokenData = await tokenRes.json();
       localStorage.setItem('token', tokenData.access_token);
       
-      const meRes = await fetch('http://localhost:8003/api/auth/me', {
+      const meRes = await fetch('http://127.0.0.1:8000/api/auth/me', {
         headers: { 'Authorization': `Bearer ${tokenData.access_token}` }
       });
       const userData = await meRes.json();
       
+      localStorage.setItem('talksense_auth_context', JSON.stringify({
+        type: 'login',
+        timestamp: Date.now(),
+        userName: userData.name,
+      }));
       setUser(userData);
       onNavigate('dashboard');
     } catch (err) {
@@ -113,7 +118,7 @@ const RegisterPage = ({ onNavigate, setUser }) => {
     e.preventDefault();
     setError('');
     try {
-      const res = await fetch('http://localhost:8003/api/auth/register', {
+      const res = await fetch('http://127.0.0.1:8000/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, name, password })
@@ -128,7 +133,7 @@ const RegisterPage = ({ onNavigate, setUser }) => {
       formData.append('username', email);
       formData.append('password', password);
       
-      const tokenRes = await fetch('http://localhost:8003/api/auth/login', {
+      const tokenRes = await fetch('http://127.0.0.1:8000/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: formData
@@ -137,11 +142,16 @@ const RegisterPage = ({ onNavigate, setUser }) => {
       const tokenData = await tokenRes.json();
       localStorage.setItem('token', tokenData.access_token);
       
-      const meRes = await fetch('http://localhost:8003/api/auth/me', {
+      const meRes = await fetch('http://127.0.0.1:8000/api/auth/me', {
         headers: { 'Authorization': `Bearer ${tokenData.access_token}` }
       });
       const userData = await meRes.json();
       
+      localStorage.setItem('talksense_auth_context', JSON.stringify({
+        type: 'register',
+        timestamp: Date.now(),
+        userName: userData.name,
+      }));
       setUser(userData);
       onNavigate('dashboard');
     } catch (err) {

@@ -2,14 +2,36 @@ console.log("SetupPage.jsx script executing...");
 
 const SetupPage = ({ onNavigate }) => {
   const { motion, AnimatePresence } = window;
+  const loadSetting = (key, fallback) => {
+    try {
+      const value = localStorage.getItem(key);
+      return value !== null ? JSON.parse(value) : fallback;
+    } catch {
+      return fallback;
+    }
+  };
   const [topic, setTopic] = useState('');
-  const [duration, setDuration] = useState(60);
-  const [difficulty, setDifficulty] = useState('Intermediate');
+  const [duration, setDuration] = useState(loadSetting('preferred_duration', 60));
+  const [difficulty, setDifficulty] = useState(loadSetting('analysis_mode', 'balanced') === 'strict' ? 'Advanced' : 'Intermediate');
+  const [deepgramKey, setDeepgramKey] = useState(localStorage.getItem('dg_key') || '');
+  const analyzerSettings = {
+    sttLang: loadSetting('stt_lang', 'en-US'),
+    smartFormat: loadSetting('smart_format', true),
+    fillerWords: loadSetting('filler_words', ['um', 'uh', 'like', 'you know', 'basically', 'literally', 'actually', 'right', 'so']),
+    targetWpm: loadSetting('target_wpm', 140),
+    analysisMode: loadSetting('analysis_mode', 'balanced'),
+    noiseSuppression: loadSetting('noise_suppression', true),
+    echoCancellation: loadSetting('echo_cancellation', true),
+    showConfidence: loadSetting('show_confidence', true),
+    autoStartCamera: loadSetting('auto_start_camera', true),
+    showLiveMetrics: loadSetting('show_live_metrics', true),
+    gazeStrict: loadSetting('gaze_strict', false),
+  };
   const [securityOptions, setSecurityOptions] = useState({
     gazeTracking: true,
     tabSwitch: true,
     plagiarism: false,
-    noiseCancellation: true
+    noiseCancellation: analyzerSettings.noiseSuppression
   });
 
   const toggleSecurity = (key) => {
@@ -51,11 +73,15 @@ const SetupPage = ({ onNavigate }) => {
 
   const handleStart = () => {
     if (!topic.trim()) return alert("Please enter a speech topic.");
+    if (deepgramKey.trim()) localStorage.setItem('dg_key', deepgramKey.trim());
+    localStorage.setItem('preferred_duration', JSON.stringify(duration));
     onNavigate('live', { 
       topic, 
       duration_seconds: duration, 
       difficulty,
-      security: securityOptions 
+      security: securityOptions,
+      deepgramKey: deepgramKey.trim(),
+      analyzerSettings
     });
   };
 
@@ -94,6 +120,45 @@ const SetupPage = ({ onNavigate }) => {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                 </svg>
               </div>
+            </div>
+          </div>
+
+          <div className="rounded-[2rem] border border-primary/15 bg-primary/5 px-6 py-5">
+            <div className="flex items-center justify-between gap-4 mb-4">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.3em] text-primary">Analyzer Preset</p>
+                <h3 className="text-lg font-black text-textMain mt-1">Live defaults from Settings</h3>
+              </div>
+              <button
+                onClick={() => onNavigate('settings')}
+                className="px-4 py-2 rounded-xl bg-white dark:bg-[#111111] border border-primary/20 text-[10px] font-black uppercase tracking-[0.2em] text-primary hover:brightness-105 transition-all"
+              >
+                Customize
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-4 text-xs font-bold text-slate-500 dark:text-slate-400">
+              <div>Language: <span className="text-textMain">{analyzerSettings.sttLang}</span></div>
+              <div>Target pace: <span className="text-textMain">{analyzerSettings.targetWpm} WPM</span></div>
+              <div>Noise cleanup: <span className="text-textMain">{analyzerSettings.noiseSuppression ? 'Enabled' : 'Off'}</span></div>
+              <div>Mode: <span className="text-textMain capitalize">{analyzerSettings.analysisMode}</span></div>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] px-2">
+              Deepgram API Key <span className="text-primary">(for real-time STT)</span>
+            </label>
+            <div className="relative">
+              <input
+                type="password"
+                placeholder="Paste your Deepgram API key..."
+                className="w-full bg-slate-50 dark:bg-[#111111] border-2 border-slate-100 dark:border-slate-800 rounded-3xl px-8 py-4 text-textMain font-bold placeholder:text-slate-300 dark:placeholder:text-slate-700 focus:outline-none focus:border-primary transition-all text-sm shadow-inner"
+                value={deepgramKey}
+                onChange={(e) => setDeepgramKey(e.target.value)}
+              />
+              <p className="text-[10px] text-slate-400 mt-2 px-2">
+                Free key at <a href="https://console.deepgram.com" target="_blank" rel="noreferrer" className="text-primary underline">console.deepgram.com</a> — falls back to browser STT if empty.
+              </p>
             </div>
           </div>
 

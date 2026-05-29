@@ -1,6 +1,6 @@
 console.log("VocabPage.jsx script executing...");
 
-const VocabPage = ({ user, onNavigate }) => {
+const VocabPage = ({ user, onNavigate, goBack, canGoBack }) => {
   const { motion, AnimatePresence } = window;
   const [searchWord, setSearchWord] = useState('');
   const [wordData, setWordData] = useState(null);
@@ -29,7 +29,7 @@ const VocabPage = ({ user, onNavigate }) => {
 
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:8003/api/vocab/search', {
+      const response = await fetch('http://127.0.0.1:8000/api/vocab/search', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -40,6 +40,9 @@ const VocabPage = ({ user, onNavigate }) => {
 
       if (response.ok) {
         const data = await response.json();
+        data.synonyms = Array.isArray(data.synonyms) ? data.synonyms : [];
+        data.antonyms = Array.isArray(data.antonyms) ? data.antonyms : [];
+        data.examples = Array.isArray(data.examples) ? data.examples : [];
         setWordData(data);
         
         // Update recent words
@@ -61,7 +64,7 @@ const VocabPage = ({ user, onNavigate }) => {
     setEvaluating(true);
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:8003/api/vocab/evaluate', {
+      const response = await fetch('http://127.0.0.1:8000/api/vocab/evaluate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -72,6 +75,7 @@ const VocabPage = ({ user, onNavigate }) => {
 
       if (response.ok) {
         const data = await response.json();
+        data.issues = Array.isArray(data.issues) ? data.issues : [];
         setEvaluation(data);
       }
     } catch (err) {
@@ -92,10 +96,10 @@ const VocabPage = ({ user, onNavigate }) => {
             <p className="text-slate-500 font-bold uppercase tracking-widest text-xs mt-2 italic">Master the art of expression with AI-driven linguistics</p>
           </div>
           <button 
-            onClick={() => onNavigate('dashboard')}
+            onClick={() => canGoBack ? goBack() : onNavigate('dashboard')}
             className="px-6 py-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 font-bold text-xs uppercase tracking-widest hover:bg-slate-50 transition-all shadow-sm"
           >
-            Back to Dashboard
+            {canGoBack ? 'Go Back' : 'Back to Dashboard'}
           </button>
         </div>
 
@@ -186,13 +190,13 @@ const VocabPage = ({ user, onNavigate }) => {
                       <div>
                         <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">Synonyms</h3>
                         <div className="flex flex-wrap gap-2">
-                          {wordData.synonyms.map(s => <span key={s} className="px-3 py-1 bg-slate-100 dark:bg-slate-800 rounded-lg text-sm font-bold text-slate-600 dark:text-slate-400">{s}</span>)}
+                          {wordData.synonyms.length > 0 ? wordData.synonyms.map(s => <span key={s} className="px-3 py-1 bg-slate-100 dark:bg-slate-800 rounded-lg text-sm font-bold text-slate-600 dark:text-slate-400">{s}</span>) : <span className="text-sm font-bold text-slate-400">No clean synonyms found.</span>}
                         </div>
                       </div>
                       <div>
                         <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">Antonyms</h3>
                         <div className="flex flex-wrap gap-2">
-                          {wordData.antonyms.map(a => <span key={a} className="px-3 py-1 bg-slate-100 dark:bg-slate-800 rounded-lg text-sm font-bold text-slate-600 dark:text-slate-400">{a}</span>)}
+                          {wordData.antonyms.length > 0 ? wordData.antonyms.map(a => <span key={a} className="px-3 py-1 bg-slate-100 dark:bg-slate-800 rounded-lg text-sm font-bold text-slate-600 dark:text-slate-400">{a}</span>) : <span className="text-sm font-bold text-slate-400">No clean antonyms found.</span>}
                         </div>
                       </div>
                     </div>
@@ -250,11 +254,21 @@ const VocabPage = ({ user, onNavigate }) => {
                                   }
                                 </svg>
                               </div>
-                              <span className="font-black uppercase tracking-widest text-xs">{evaluation.is_correct ? 'Mastery Verified' : 'Needs Adjustment'}</span>
+                              <span className="font-black uppercase tracking-widest text-xs">{evaluation.is_correct ? 'Mastery Verified' : 'Needs Adjustment'} {evaluation.score ? `• ${evaluation.score}/100` : ''}</span>
                             </div>
                             <p className="text-sm font-bold text-slate-200 mb-4">{evaluation.feedback}</p>
+                            {evaluation.issues?.length > 0 && (
+                              <div className="mb-4 p-4 bg-black/30 rounded-xl border border-white/5">
+                                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Detected Issues</p>
+                                <div className="space-y-2">
+                                  {evaluation.issues.map((issue, index) => (
+                                    <p key={index} className="text-sm text-slate-200">• {issue}</p>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                             <div className="p-4 bg-black/40 rounded-xl border border-white/5">
-                              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Coach's Suggestion</p>
+                              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">How To Improve</p>
                               <p className="text-emerald-400 font-medium italic">"{evaluation.suggestion}"</p>
                             </div>
                           </motion.div>
@@ -310,7 +324,7 @@ const VocabPage = ({ user, onNavigate }) => {
                 {recentWords.map(word => (
                   <button 
                     key={word}
-                    onClick={() => { setSearchWord(word); handleSearch(); }}
+                    onClick={() => { setSearchWord(word); handleSearch(word); }}
                     className="w-full p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50 hover:bg-emerald-50 dark:hover:bg-emerald-900/10 border border-slate-100 dark:border-slate-800 text-left transition-all group"
                   >
                     <div className="flex justify-between items-center">

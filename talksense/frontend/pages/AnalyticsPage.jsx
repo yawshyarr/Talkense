@@ -1,370 +1,554 @@
 console.log("AnalyticsPage.jsx script executing...");
 
-const AnalyticsPage = ({ user, onNavigate }) => {
-  console.log("CRITICAL: AnalyticsPage attempting to render...");
-  
-  // Safe extraction from window with fallbacks
-  const { 
-    useState, useEffect, useMemo, 
-    LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, 
-    Tooltip, ResponsiveContainer, BarChart, Bar, Cell, PieChart, Pie
-  } = window;
-  const motion = window.motion || { div: "div" }; 
+const SCORE_KEYS = ['fluency', 'clarity', 'pace', 'vocabulary', 'confidence'];
+const LEVELS = ['All', 'Beginner', 'Intermediate', 'Advanced'];
 
-  // Verify core React hooks are present
-  if (!useState || !useEffect) {
-    console.error("FATAL: React hooks not found on window.");
-    return <div className="p-20 text-center text-red-500 font-black">SYSTEM ERROR: REACT HOOKS MISSING</div>;
+const averageScore = (scores = {}) => {
+  const total = SCORE_KEYS.reduce((sum, key) => sum + (scores[key] || 0), 0);
+  return Math.round(total / SCORE_KEYS.length);
+};
+
+const formatShortDate = (value) => {
+  try {
+    return new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  } catch {
+    return value;
   }
+};
 
+const CustomLineChart = ({ data, stroke = '#10b981', height = 220 }) => {
+  if (!data.length) return null;
+  const width = 100;
+  const maxY = Math.max(...data.map(point => point.value), 1);
+  const points = data.map((point, index) => {
+    const x = data.length === 1 ? width / 2 : (index / (data.length - 1)) * width;
+    const y = 90 - ((point.value / maxY) * 70);
+    return `${x},${y}`;
+  }).join(' ');
+
+  return (
+    <div className="w-full" style={{ height }}>
+      <svg viewBox="0 0 100 100" className="w-full h-full overflow-visible">
+        <defs>
+          <linearGradient id="analyticsArea" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={stroke} stopOpacity="0.35" />
+            <stop offset="100%" stopColor={stroke} stopOpacity="0.03" />
+          </linearGradient>
+        </defs>
+        <line x1="0" y1="90" x2="100" y2="90" stroke="rgba(148,163,184,0.25)" strokeDasharray="1.5 2" />
+        <polyline fill="none" stroke={stroke} strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round" points={points} />
+        <polygon fill="url(#analyticsArea)" points={`0,90 ${points} 100,90`} />
+        {data.map((point, index) => {
+          const x = data.length === 1 ? width / 2 : (index / (data.length - 1)) * width;
+          const y = 90 - ((point.value / maxY) * 70);
+          return <circle key={`${point.label}-${index}`} cx={x} cy={y} r="1.8" fill={stroke} />;
+        })}
+      </svg>
+      <div className="grid gap-2 mt-3 text-[10px] font-black uppercase tracking-widest text-slate-400" style={{ gridTemplateColumns: `repeat(${data.length}, minmax(0, 1fr))` }}>
+        {data.map((point, index) => (
+          <div key={`${point.label}-${index}`} className="text-center">{point.label}</div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const AnalyticsPage = ({ user, onNavigate, goBack, canGoBack }) => {
+  const { motion } = window;
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [aiTips, setAiTips] = useState([]);
-  const [stats, setStats] = useState({
-    avgWPM: 0,
-    totalWords: 0,
-    avgScore: 0,
-    growthRate: 0,
-    vocabularyRichness: 0,
-    topFillers: [],
-    longestSentence: 0,
-    shortestSentence: 0
-  });
+  const [lastUpdated, setLastUpdated] = useState(null);
+  const [activeLevel, setActiveLevel] = useState('All');
 
   const fetchAnalytics = async () => {
-    console.log("Analytics: Fetching data...");
     try {
+      setLoading(true);
       const token = localStorage.getItem('token');
       if (!token) {
-        console.warn("Analytics: No token found");
+        setSessions([]);
         setLoading(false);
         return;
       }
-      
-      const res = await fetch('http://localhost:8003/api/sessions/', {
-        headers: { 'Authorization': `Bearer ${token}` }
+
+      const res = await fetch('http://127.0.0.1:8000/api/sessions/', {
+        headers: { Authorization: `Bearer ${token}` }
       });
-      
-      if (res.ok) {
-        const data = await res.json();
-        console.log("Analytics: Data received, sessions:", data?.length);
-        const sorted = (data || []).sort((a, b) => new Date(a.date) - new Date(b.date));
-        setSessions(sorted);
-        processStats(sorted);
-        fetchAiTips(sorted);
-      } else {
-        console.error("Analytics: API error", res.status);
-      }
-      setLoading(false);
-    } catch (err) {
-      console.error("Analytics: Fetch catch", err);
+
+      if (!res.ok) throw new Error(`Analytics fetch failed: ${res.status}`);
+      const data = await res.json();
+      const sorted = (data || []).sort((a, b) => new Date(a.date) - new Date(b.date));
+      setSessions(sorted);
+      setLastUpdated(new Date());
+    } catch (error) {
+      console.error("Analytics fetch failed", error);
+      setSessions([]);
+    } finally {
       setLoading(false);
     }
-  };
-
-  const processStats = (data) => {
-    if (!data || data.length === 0) return;
-    try {
-        let totalWpm = 0;
-        let totalWords = 0;
-        let totalScore = 0;
-        let fillerCounts = {};
-        let allWords = [];
-        let sentenceLengths = [];
-
-        data.forEach(s => {
-          const analysis = s.analysis_data || {};
-          totalWpm += analysis.stats?.pace || 0;
-          totalWords += analysis.stats?.words_spoken || 0;
-          
-          const scores = analysis.scores || { fluency: 0, clarity: 0, pace: 0, vocabulary: 0, confidence: 0 };
-          const avgS = Math.round((
-            (scores.fluency || 0) + 
-            (scores.clarity || 0) + 
-            (scores.pace || 0) + 
-            (scores.vocabulary || 0) + 
-            (scores.confidence || 0)
-          ) / 5);
-          totalScore += avgS;
-
-          const transcript = s.raw_transcript || "";
-          const words = transcript.toLowerCase().match(/\b\w+\b/g) || [];
-          allWords = [...allWords, ...words];
-
-          const sentences = transcript.split(/[.!?]+/).filter(sent => sent.trim().length > 0);
-          sentences.forEach(sent => {
-            sentenceLengths.push(sent.trim().split(/\s+/).length);
-          });
-
-          const detectedFillers = (transcript.match(/\b(um|uh|like|basically|you know|so|actually)\b/gi) || []);
-          detectedFillers.forEach(f => {
-            const lowerF = f.toLowerCase();
-            fillerCounts[lowerF] = (fillerCounts[lowerF] || 0) + 1;
-          });
-        });
-
-        const uniqueWords = new Set(allWords).size;
-        const topFillers = Object.entries(fillerCounts)
-          .sort((a, b) => b[1] - a[1])
-          .map(([name, value]) => ({ name, value }))
-          .slice(0, 5);
-
-        setStats({
-          avgWPM: Math.round(totalWpm / data.length) || 0,
-          totalWords: totalWords || 0,
-          avgScore: Math.round(totalScore / data.length) || 0,
-          growthRate: data.length > 1 ? Math.round(((totalScore / data.length) - 50) * 1.5) : 0,
-          vocabularyRichness: totalWords > 0 ? Math.round((uniqueWords / totalWords) * 100) : 0,
-          topFillers,
-          longestSentence: sentenceLengths.length > 0 ? Math.max(...sentenceLengths) : 0,
-          shortestSentence: sentenceLengths.length > 0 ? Math.min(...sentenceLengths) : 0
-        });
-    } catch (e) {
-        console.error("Stats processing failed", e);
-    }
-  };
-
-  const fetchAiTips = async (data) => {
-    const mockTips = [
-      { title: "Pause Control", tip: "You use 'basically' 15% more than average. Try replacing it with a 1-second silent pause.", color: "emerald-500" },
-      { title: "Rhythmic Flow", tip: "Your pace fluctuates significantly. Practice speaking to a metronome at 130 WPM.", color: "amber-500" },
-      { title: "Diction Clarity", tip: "Long sentences are causing clarity drops. Aim for 12-15 words per sentence for maximum impact.", color: "emerald-500" }
-    ];
-    setAiTips(mockTips);
   };
 
   useEffect(() => {
     fetchAnalytics();
+    const handleFocus = () => fetchAnalytics();
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
   }, []);
 
-  const chartData = useMemo(() => {
-    try {
-        return sessions.map(s => {
-          const scores = s.analysis_data?.scores || { fluency: 0, clarity: 0, pace: 0, vocabulary: 0, confidence: 0 };
-          const avg = Math.round((
-            (scores.fluency || 0) + 
-            (scores.clarity || 0) + 
-            (scores.pace || 0) + 
-            (scores.vocabulary || 0) + 
-            (scores.confidence || 0)
-          ) / 5);
-          return {
-            date: new Date(s.date).toLocaleDateString(),
-            score: avg || 0,
-            wpm: s.analysis_data?.stats?.pace || 0
-          };
-        });
-    } catch (e) {
-        return [];
+  const filteredSessions = useMemo(() => {
+    if (activeLevel === 'All') return sessions;
+    return sessions.filter((session) => (session.analysis_data?.metadata?.difficulty || 'Intermediate') === activeLevel);
+  }, [sessions, activeLevel]);
+
+  const analytics = useMemo(() => {
+    const sessionCount = filteredSessions.length;
+    if (!sessionCount) {
+      return {
+        totals: { sessions: 0, avgScore: 0, avgWpm: 0, totalWords: 0, bestScore: 0, strongestMetric: 'fluency' },
+        timeline: [],
+        metricAverages: [],
+        fillerBreakdown: [],
+        levelBreakdown: [],
+        insights: [],
+        sentenceStats: { avg: 0, max: 0, min: 0 },
+        comparisons: { recentAvg: 0, previousAvg: 0, delta: 0, recentCount: 0, previousCount: 0 },
+        momentum: { bestRise: null, biggestDrop: null },
+      };
     }
-  }, [sessions]);
+
+    let totalWords = 0;
+    let totalWpm = 0;
+    let totalScore = 0;
+    let bestScore = 0;
+    let sentenceLengths = [];
+    let fillerMap = {};
+    let levelMap = {};
+    let metricTotals = { fluency: 0, clarity: 0, pace: 0, vocabulary: 0, confidence: 0 };
+
+    const timeline = filteredSessions.map((session) => {
+      const analysis = session.analysis_data || {};
+      const scores = analysis.scores || {};
+      const avg = averageScore(scores);
+      const stats = analysis.stats || {};
+
+      totalWords += stats.words_spoken || 0;
+      totalWpm += stats.pace || 0;
+      totalScore += avg;
+      bestScore = Math.max(bestScore, avg);
+      SCORE_KEYS.forEach((key) => {
+        metricTotals[key] += scores[key] || 0;
+      });
+
+      const transcript = session.raw_transcript || '';
+      const fillers = (transcript.match(/\b(um|uh|like|basically|you know|so|actually|literally|right)\b/gi) || []);
+      fillers.forEach((item) => {
+        const key = item.toLowerCase();
+        fillerMap[key] = (fillerMap[key] || 0) + 1;
+      });
+
+      const sentences = transcript.split(/[.!?]+/).map(item => item.trim()).filter(Boolean);
+      sentences.forEach((sentence) => {
+        sentenceLengths.push((sentence.match(/\b[\w']+\b/g) || []).length);
+      });
+
+      const difficulty = analysis.metadata?.difficulty || 'Intermediate';
+      levelMap[difficulty] = (levelMap[difficulty] || 0) + 1;
+
+      return {
+        id: session.id,
+        label: formatShortDate(session.date),
+        value: avg,
+        pace: stats.pace || 0,
+        words: stats.words_spoken || 0,
+        topic: session.topic,
+        difficulty,
+        raw: session,
+      };
+    });
+
+    const metricAverages = SCORE_KEYS.map((key) => ({
+      key,
+      value: Math.round(metricTotals[key] / sessionCount),
+    }));
+
+    const strongestMetric = [...metricAverages].sort((a, b) => b.value - a.value)[0];
+    const weakestMetric = [...metricAverages].sort((a, b) => a.value - b.value)[0];
+    const fillerBreakdown = Object.entries(fillerMap)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6)
+      .map(([label, value]) => ({ label, value }));
+    const levelBreakdown = Object.entries(levelMap).map(([label, value]) => ({ label, value }));
+
+    const sentenceStats = {
+      avg: sentenceLengths.length ? Math.round(sentenceLengths.reduce((sum, value) => sum + value, 0) / sentenceLengths.length) : 0,
+      max: sentenceLengths.length ? Math.max(...sentenceLengths) : 0,
+      min: sentenceLengths.length ? Math.min(...sentenceLengths) : 0,
+    };
+
+    const recentWindow = timeline.slice(-4);
+    const previousWindow = timeline.slice(Math.max(0, timeline.length - 8), Math.max(0, timeline.length - 4));
+    const averageWindowScore = (items) => items.length ? Math.round(items.reduce((sum, item) => sum + item.value, 0) / items.length) : 0;
+    const recentAvg = averageWindowScore(recentWindow);
+    const previousAvg = averageWindowScore(previousWindow);
+    const delta = recentAvg - previousAvg;
+
+    let bestRise = null;
+    let biggestDrop = null;
+    for (let i = 1; i < timeline.length; i++) {
+      const change = timeline[i].value - timeline[i - 1].value;
+      const pair = { from: timeline[i - 1], to: timeline[i], change };
+      if (!bestRise || change > bestRise.change) bestRise = pair;
+      if (!biggestDrop || change < biggestDrop.change) biggestDrop = pair;
+    }
+
+    const insights = [];
+    if (fillerBreakdown[0]) insights.push(`${fillerBreakdown[0].label} is your most frequent filler word, appearing ${fillerBreakdown[0].value} times.`);
+    if (weakestMetric) insights.push(`${weakestMetric.key} is your weakest average metric at ${weakestMetric.value}%.`);
+    if (sentenceStats.avg > 18) insights.push(`Your average sentence length is ${sentenceStats.avg} words, which may reduce clarity in live speaking.`);
+    if (timeline.length > 1) {
+      const totalTrend = timeline[timeline.length - 1].value - timeline[0].value;
+      insights.push(totalTrend >= 0
+        ? `Your score trend has improved by ${totalTrend} points across recorded sessions.`
+        : `Your score trend has dropped by ${Math.abs(totalTrend)} points across recorded sessions.`);
+    }
+    if (previousWindow.length > 0) {
+      insights.push(delta >= 0
+        ? `Your newest session block is ${delta} points higher than the previous block.`
+        : `Your newest session block is ${Math.abs(delta)} points lower than the previous block.`);
+    }
+    if (!insights.length) insights.push('Complete more sessions to unlock stronger trend analysis and coaching signals.');
+
+    return {
+      totals: {
+        sessions: sessionCount,
+        avgScore: Math.round(totalScore / sessionCount),
+        avgWpm: Math.round(totalWpm / sessionCount),
+        totalWords,
+        bestScore,
+        strongestMetric: strongestMetric?.key || 'fluency',
+      },
+      timeline,
+      metricAverages,
+      fillerBreakdown,
+      levelBreakdown,
+      insights,
+      sentenceStats,
+      comparisons: { recentAvg, previousAvg, delta, recentCount: recentWindow.length, previousCount: previousWindow.length },
+      momentum: { bestRise, biggestDrop },
+    };
+  }, [filteredSessions]);
+
+  const topStats = [
+    { label: 'Sessions Logged', value: analytics.totals.sessions, suffix: '', note: 'Based only on saved history' },
+    { label: 'Average Score', value: analytics.totals.avgScore, suffix: '%', note: 'Composite result average' },
+    { label: 'Average Pace', value: analytics.totals.avgWpm, suffix: 'WPM', note: 'Derived from saved session stats' },
+    { label: 'Words Captured', value: analytics.totals.totalWords, suffix: '', note: 'Transcript-backed count' },
+  ];
+
+  const recentSessions = analytics.timeline.slice(-6).reverse();
 
   if (loading) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 dark:bg-black">
         <div className="w-16 h-16 border-4 border-primary/20 border-t-primary rounded-full animate-spin mb-4"></div>
-        <p className="text-primary font-black uppercase tracking-[0.3em] text-xs">Synchronizing Intelligence...</p>
+        <p className="text-primary font-black uppercase tracking-[0.3em] text-xs">Building Analytics...</p>
       </div>
     );
   }
 
-  const hasCharts = !!(AreaChart && BarChart);
-
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-black p-8 pt-24 pb-20">
       <div className="max-w-7xl mx-auto">
-        
-        {/* Header */}
-        <div className="flex justify-between items-center mb-16">
-          <motion.div initial={{ x: -20, opacity: 0 }} animate={{ x: 0, opacity: 1 }}>
-            <h1 className="text-5xl font-black text-slate-900 dark:text-white uppercase tracking-tighter">Growth <span className="text-primary">Analytics</span></h1>
-            <p className="text-slate-500 font-bold uppercase tracking-widest text-xs mt-2 italic">Neural performance tracking and longitudinal development</p>
-          </motion.div>
-          <button 
-            onClick={() => onNavigate('dashboard')}
-            className="px-6 py-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 font-bold text-xs uppercase tracking-widest hover:bg-slate-50 transition-all"
-          >
-            Exit Analytics
-          </button>
+        <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 mb-14">
+          <div>
+            <h1 className="text-5xl font-black text-slate-900 dark:text-white uppercase tracking-tighter">Session <span className="text-primary">Analytics</span></h1>
+            <p className="text-slate-500 font-bold uppercase tracking-widest text-xs mt-2 italic">Every chart here is generated only from saved session results.</p>
+            <p className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-400 mt-4">
+              {lastUpdated ? `Last Updated ${lastUpdated.toLocaleTimeString()}` : 'No refresh yet'}
+            </p>
+          </div>
+
+          <div className="flex gap-3">
+            <button
+              onClick={fetchAnalytics}
+              className="px-5 py-3 rounded-2xl bg-primary text-white font-black uppercase tracking-widest text-[10px] hover:brightness-110 transition-all"
+            >
+              Refresh Analytics
+            </button>
+            <button
+              onClick={() => canGoBack ? goBack() : onNavigate('dashboard')}
+              className="px-5 py-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 font-black uppercase tracking-widest text-[10px] hover:bg-slate-50 transition-all"
+            >
+              {canGoBack ? 'Go Back' : 'Exit Analytics'}
+            </button>
+          </div>
         </div>
 
-        {/* Top Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
-          {[
-            { label: 'Growth Rate', value: stats.growthRate, unit: '%', trend: '+12.5%', color: 'primary' },
-            { label: 'Avg Pace', value: stats.avgWPM, unit: 'WPM', trend: 'Stable', color: 'blue-500' },
-            { label: 'Vocab Richness', value: stats.vocabularyRichness, unit: '%', trend: '+4.2%', color: 'emerald-500' },
-            { label: 'Global Rank', value: 'Top 15', unit: '%', trend: 'Rising', color: 'amber-500' }
-          ].map((stat, i) => (
-            <motion.div 
-              key={i}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.1 }}
-              className="glass-card p-8 bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 relative overflow-hidden group"
+        <div className="flex flex-wrap gap-3 mb-10">
+          {LEVELS.map((level) => (
+            <button
+              key={level}
+              onClick={() => setActiveLevel(level)}
+              className={`px-4 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${activeLevel === level ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 hover:border-primary/30 hover:text-primary'}`}
             >
-              <p className="text-slate-400 font-black uppercase tracking-widest text-[10px] mb-4">{stat.label}</p>
-              <div className="flex items-baseline gap-2">
-                <span className={`text-4xl font-black ${stat.color === 'primary' ? 'text-primary' : 'text-slate-900 dark:text-white'}`}>{stat.value}</span>
-                <span className="text-xs font-bold text-slate-400 uppercase">{stat.unit}</span>
-              </div>
-              <p className={`text-[10px] font-black mt-4 ${stat.color === 'primary' ? 'text-primary' : 'text-blue-500'}`}>{stat.trend} baseline</p>
-            </motion.div>
+              {level}
+            </button>
           ))}
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-12">
-          
-          {/* Main Growth Chart */}
-          <div className="lg:col-span-2 glass-card p-10 bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 min-h-[400px]">
-            <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-10">Neural Score Progression</h3>
-            {hasCharts && sessions.length > 0 ? (
-              <div className="h-80 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={chartData}>
-                    <defs>
-                      <linearGradient id="colorScore" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
-                        <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.05)" />
-                    <XAxis dataKey="date" stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} />
-                    <YAxis stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} />
-                    <Tooltip 
-                      contentStyle={{ backgroundColor: '#0f172a', border: 'none', borderRadius: '16px', color: '#fff' }}
-                      itemStyle={{ color: '#10b981' }}
-                    />
-                    <Area type="monotone" dataKey="score" stroke="#10b981" strokeWidth={4} fillOpacity={1} fill="url(#colorScore)" />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            ) : (
-              <div className="h-80 flex items-center justify-center border-2 border-dashed border-slate-100 dark:border-slate-800 rounded-3xl">
-                <p className="text-slate-400 font-black uppercase tracking-widest text-[10px]">
-                  {sessions.length === 0 ? "Insufficient session data for progression chart" : "Visual engine initializing..."}
-                </p>
-              </div>
-            )}
+        {analytics.totals.sessions === 0 ? (
+          <div className="glass-card p-16 bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 text-center rounded-[3rem]">
+            <h2 className="text-3xl font-black text-slate-900 dark:text-white uppercase tracking-tight">No Session Data Yet</h2>
+            <p className="text-slate-500 font-bold mt-4">Complete and save at least one {activeLevel !== 'All' ? activeLevel.toLowerCase() : ''} session to unlock detailed analytics.</p>
           </div>
-
-          {/* Filler Breakdown */}
-          <div className="glass-card p-10 bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800">
-            <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-10">Filler Distribution</h3>
-            {hasCharts && stats.topFillers.length > 0 ? (
-              <div className="h-64 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={stats.topFillers}>
-                    <XAxis dataKey="name" stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} />
-                    <Tooltip cursor={{fill: 'transparent'}} contentStyle={{ backgroundColor: '#0f172a', border: 'none', borderRadius: '12px' }} />
-                    <Bar dataKey="value" radius={[10, 10, 0, 0]}>
-                      {stats.topFillers.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={index === 0 ? '#ef4444' : '#10b981'} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            ) : (
-              <div className="h-64 flex items-center justify-center border-2 border-dashed border-slate-100 dark:border-slate-800 rounded-3xl">
-                <p className="text-slate-400 font-black uppercase tracking-widest text-[10px]">No filler data captured yet</p>
-              </div>
-            )}
-            {stats.topFillers.length > 0 && (
-              <div className="mt-8 p-4 bg-red-500/10 border border-red-500/20 rounded-2xl">
-                <p className="text-[10px] font-black text-red-500 uppercase tracking-widest mb-1">Critical Warning</p>
-                <p className="text-xs font-bold text-red-700 dark:text-red-400">Over-reliance on "{stats.topFillers[0].name}" detected.</p>
-              </div>
-            )}
-          </div>
-
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          
-          {/* Detailed Speech Metrics */}
-          <div className="glass-card p-10 bg-slate-900 text-white rounded-[3rem] shadow-2xl shadow-primary/10">
-            <h3 className="text-xs font-black text-emerald-400 uppercase tracking-widest mb-10">Linguistic Precision</h3>
-            <div className="space-y-10">
-              <div className="flex justify-between items-center">
-                <div>
-                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Total Words Captured</p>
-                  <p className="text-3xl font-black tracking-tighter">{stats.totalWords}</p>
-                </div>
-                <div className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center">
-                  <svg className="w-6 h-6 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a1.994 1.994 0 01-1.414-.586m0 0L11 14h4a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2v4l.586-.586z" />
-                  </svg>
-                </div>
-              </div>
-              
-              <div className="grid grid-cols-2 gap-6 pt-10 border-t border-white/5">
-                <div>
-                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Longest Sentence</p>
-                  <p className="text-xl font-black">{stats.longestSentence} <span className="text-[10px] text-slate-600">words</span></p>
-                </div>
-                <div>
-                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Shortest Sentence</p>
-                  <p className="text-xl font-black">{stats.shortestSentence} <span className="text-[10px] text-slate-600">words</span></p>
-                </div>
-              </div>
-
-              <div className="pt-10 border-t border-white/5">
-                <div className="flex justify-between items-center mb-4">
-                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">WPM Consistency</p>
-                  <span className="text-xs font-black text-emerald-500">88%</span>
-                </div>
-                <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
-                  <motion.div initial={{ width: 0 }} animate={{ width: '88%' }} className="h-full bg-emerald-500" />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* AI Improvement Tips */}
-          <div className="lg:col-span-2 space-y-6">
-            <div className="flex items-center gap-4 mb-4">
-              <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
-              </div>
-              <h3 className="text-xl font-black text-slate-900 dark:text-white uppercase tracking-tighter">AI Coaching <span className="text-primary">Directives</span></h3>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {aiTips.map((tip, i) => (
-                <motion.div 
-                  key={i}
-                  whileHover={{ scale: 1.02 }}
-                  className={`p-8 bg-white dark:bg-slate-900 border-l-4 border-${tip.color} shadow-xl rounded-3xl relative overflow-hidden group`}
+        ) : (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mb-12">
+              {topStats.map((item, index) => (
+                <motion.div
+                  key={item.label}
+                  initial={{ opacity: 0, y: 18 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.08 }}
+                  className="glass-card p-8 bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 rounded-[2rem]"
                 >
-                  <h4 className={`text-xs font-black text-${tip.color} uppercase tracking-widest mb-4`}>{tip.title}</h4>
-                  <p className="text-sm font-bold text-slate-600 dark:text-slate-400 leading-relaxed">{tip.tip}</p>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4">{item.label}</p>
+                  <div className="flex items-end gap-2">
+                    <span className="text-4xl font-black text-slate-900 dark:text-white">{item.value}</span>
+                    {item.suffix && <span className="text-xs font-bold text-slate-400 uppercase mb-1">{item.suffix}</span>}
+                  </div>
+                  <p className="text-[11px] font-bold text-slate-500 mt-4">{item.note}</p>
                 </motion.div>
               ))}
             </div>
 
-            <div className="mt-12 p-10 bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/20 rounded-[3rem] relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-64 h-64 bg-primary/10 rounded-full -mr-32 -mt-32 blur-3xl"></div>
-              <div className="relative z-10 flex flex-col md:flex-row items-center gap-10">
-                <div className="w-20 h-20 rounded-3xl bg-primary flex items-center justify-center shadow-2xl shadow-primary/40 shrink-0">
-                  <svg className="w-10 h-10 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
+            <div className="grid grid-cols-1 xl:grid-cols-[1.8fr_1fr] gap-8 mb-12">
+              <div className="glass-card p-10 bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 rounded-[3rem]">
+                <div className="flex items-center justify-between mb-8">
+                  <div>
+                    <h3 className="text-2xl font-black text-slate-900 dark:text-white">Score Progression</h3>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-2">Recent session averages over time</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Best Score</p>
+                    <p className="text-2xl font-black text-primary">{analytics.totals.bestScore}%</p>
+                  </div>
                 </div>
-                <div>
-                  <h4 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight mb-2">Quarterly Roadmap Update</h4>
-                  <p className="text-sm font-bold text-slate-500 dark:text-slate-400 leading-relaxed max-w-xl">
-                    You are on track to reach "Master Communicator" status. Keep focusing on lexical diversity and rhythmic pausing.
-                  </p>
+                <CustomLineChart data={analytics.timeline.map(point => ({ label: point.label, value: point.value }))} />
+              </div>
+
+              <div className="glass-card p-10 bg-slate-900 text-white rounded-[3rem] shadow-2xl shadow-primary/10">
+                <h3 className="text-2xl font-black">Signal Summary</h3>
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mt-2 mb-8">Straight from session history</p>
+                <div className="space-y-6">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Strongest Metric</p>
+                    <p className="text-3xl font-black capitalize">{analytics.totals.strongestMetric}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Average Sentence</p>
+                    <p className="text-3xl font-black">{analytics.sentenceStats.avg} <span className="text-sm text-slate-400">words</span></p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Sentence Range</p>
+                    <p className="text-xl font-black">{analytics.sentenceStats.min} to {analytics.sentenceStats.max} words</p>
+                  </div>
                 </div>
-                <button className="px-8 py-4 bg-slate-900 dark:bg-black text-white rounded-2xl font-black uppercase tracking-widest text-[10px] whitespace-nowrap hover:scale-105 transition-all">Full Roadmap</button>
               </div>
             </div>
-          </div>
 
-        </div>
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 mb-12">
+              <div className="glass-card p-10 bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 rounded-[3rem]">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3">Recent Block Average</p>
+                <p className="text-5xl font-black text-primary">{analytics.comparisons.recentAvg}%</p>
+                <p className="text-sm font-bold text-slate-500 mt-3">Based on the latest {analytics.comparisons.recentCount || 0} sessions.</p>
+              </div>
+              <div className="glass-card p-10 bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 rounded-[3rem]">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3">Previous Block Average</p>
+                <p className="text-5xl font-black text-slate-900 dark:text-white">{analytics.comparisons.previousAvg}%</p>
+                <p className="text-sm font-bold text-slate-500 mt-3">Compared against the previous {analytics.comparisons.previousCount || 0} sessions.</p>
+              </div>
+              <div className="glass-card p-10 bg-slate-900 text-white rounded-[3rem] shadow-2xl shadow-primary/10">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3">Change</p>
+                <p className={`text-5xl font-black ${analytics.comparisons.delta >= 0 ? 'text-primary' : 'text-red-400'}`}>
+                  {analytics.comparisons.delta >= 0 ? '+' : ''}{analytics.comparisons.delta}
+                </p>
+                <p className="text-sm font-bold text-slate-400 mt-3">Difference between newest and previous session blocks.</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 mb-12">
+              <div className="glass-card p-10 bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 rounded-[3rem] xl:col-span-2">
+                <h3 className="text-2xl font-black text-slate-900 dark:text-white mb-8">Metric Breakdown</h3>
+                <div className="space-y-6">
+                  {analytics.metricAverages.map((metric, index) => (
+                    <motion.div
+                      key={metric.key}
+                      initial={{ opacity: 0, x: -16 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: index * 0.06 }}
+                    >
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-xs font-black uppercase tracking-widest text-slate-500">{metric.key}</span>
+                        <span className="text-sm font-black text-slate-900 dark:text-white">{metric.value}%</span>
+                      </div>
+                      <div className="h-3 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                        <div className="h-full rounded-full bg-primary" style={{ width: `${metric.value}%` }}></div>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="glass-card p-10 bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 rounded-[3rem]">
+                <h3 className="text-2xl font-black text-slate-900 dark:text-white mb-8">Level Usage</h3>
+                <div className="space-y-5">
+                  {analytics.levelBreakdown.map((level) => {
+                    const width = Math.round((level.value / analytics.totals.sessions) * 100);
+                    return (
+                      <div key={level.label}>
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="text-xs font-black uppercase tracking-widest text-slate-500">{level.label}</span>
+                          <span className="text-sm font-black text-slate-900 dark:text-white">{level.value}</span>
+                        </div>
+                        <div className="h-3 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                          <div className="h-full rounded-full bg-slate-900 dark:bg-white" style={{ width: `${width}%` }}></div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 mb-12">
+              <div className="glass-card p-10 bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 rounded-[3rem]">
+                <h3 className="text-2xl font-black text-slate-900 dark:text-white mb-6">Best Improvement</h3>
+                {analytics.momentum.bestRise ? (
+                  <div className="space-y-4">
+                    <p className="text-5xl font-black text-primary">+{analytics.momentum.bestRise.change}</p>
+                    <p className="text-sm font-bold text-slate-600 dark:text-slate-300">
+                      From {analytics.momentum.bestRise.from.topic} ({analytics.momentum.bestRise.from.value}%) to {analytics.momentum.bestRise.to.topic} ({analytics.momentum.bestRise.to.value}%).
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-sm font-bold text-slate-500">Not enough sessions to calculate improvements yet.</p>
+                )}
+              </div>
+              <div className="glass-card p-10 bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 rounded-[3rem]">
+                <h3 className="text-2xl font-black text-slate-900 dark:text-white mb-6">Biggest Drop</h3>
+                {analytics.momentum.biggestDrop ? (
+                  <div className="space-y-4">
+                    <p className={`text-5xl font-black ${analytics.momentum.biggestDrop.change < 0 ? 'text-red-500' : 'text-slate-900 dark:text-white'}`}>
+                      {analytics.momentum.biggestDrop.change > 0 ? '+' : ''}{analytics.momentum.biggestDrop.change}
+                    </p>
+                    <p className="text-sm font-bold text-slate-600 dark:text-slate-300">
+                      From {analytics.momentum.biggestDrop.from.topic} ({analytics.momentum.biggestDrop.from.value}%) to {analytics.momentum.biggestDrop.to.topic} ({analytics.momentum.biggestDrop.to.value}%).
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-sm font-bold text-slate-500">Not enough sessions to calculate drops yet.</p>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 xl:grid-cols-[1.2fr_1fr] gap-8">
+              <div className="glass-card p-10 bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 rounded-[3rem]">
+                <h3 className="text-2xl font-black text-slate-900 dark:text-white mb-8">Coaching Signals</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {analytics.insights.map((insight, index) => (
+                    <div key={index} className="p-6 rounded-[2rem] bg-primary/5 border border-primary/15">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-primary mb-3">Insight {index + 1}</p>
+                      <p className="text-sm font-bold text-slate-700 dark:text-slate-300 leading-relaxed">{insight}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="glass-card p-10 bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 rounded-[3rem]">
+                <h3 className="text-2xl font-black text-slate-900 dark:text-white mb-8">Top Fillers</h3>
+                <div className="space-y-4">
+                  {analytics.fillerBreakdown.length > 0 ? analytics.fillerBreakdown.map((item, index) => {
+                    const maxValue = analytics.fillerBreakdown[0].value || 1;
+                    const width = Math.round((item.value / maxValue) * 100);
+                    return (
+                      <div key={item.label}>
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="text-xs font-black uppercase tracking-widest text-slate-500">{item.label}</span>
+                          <span className="text-sm font-black text-slate-900 dark:text-white">{item.value}</span>
+                        </div>
+                        <div className="h-3 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                          <div className={`h-full rounded-full ${index === 0 ? 'bg-red-500' : 'bg-primary'}`} style={{ width: `${width}%` }}></div>
+                        </div>
+                      </div>
+                    );
+                  }) : (
+                    <p className="text-sm font-bold text-slate-500">No filler-word data has been captured yet.</p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-12 glass-card p-10 bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 rounded-[3rem]">
+              <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
+                <div>
+                  <h3 className="text-2xl font-black text-slate-900 dark:text-white">Recent Session Breakdown</h3>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-2">Every row is pulled directly from saved session analysis</p>
+                </div>
+                <div className="px-4 py-2 rounded-2xl bg-primary/10 text-primary text-[10px] font-black uppercase tracking-widest border border-primary/15">
+                  Auto-updates after refresh and history changes
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                {recentSessions.map((session, index) => (
+                  <motion.div
+                    key={`${session.label}-${session.topic}-${index}`}
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.05 }}
+                    className="p-6 rounded-[2rem] bg-slate-50 dark:bg-[#111111] border border-slate-100 dark:border-slate-800"
+                  >
+                    <div className="grid grid-cols-1 md:grid-cols-[1.4fr_0.6fr_0.6fr_0.6fr] gap-4 items-center">
+                      <div>
+                        <p className="text-lg font-black text-slate-900 dark:text-white">{session.topic}</p>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-2">{session.label}</p>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-primary mt-2">{session.difficulty}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Score</p>
+                        <p className="text-2xl font-black text-primary">{session.value}%</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Pace</p>
+                        <p className="text-2xl font-black text-slate-900 dark:text-white">{session.pace}</p>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase">WPM</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Words</p>
+                        <p className="text-2xl font-black text-slate-900 dark:text-white">{session.words}</p>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase">Captured</p>
+                      </div>
+                    </div>
+                    <div className="flex justify-end mt-5">
+                      <button
+                        onClick={() => onNavigate('report', {
+                          transcript: session.raw.raw_transcript,
+                          duration_seconds: session.raw.duration_seconds,
+                          topic: session.raw.topic,
+                          difficulty: session.raw.analysis_data?.metadata?.difficulty || session.difficulty,
+                          analysis_data: session.raw.analysis_data
+                        })}
+                        className="px-4 py-3 rounded-2xl bg-primary text-white text-[10px] font-black uppercase tracking-widest hover:brightness-110 transition-all"
+                      >
+                        Open Report
+                      </button>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

@@ -2,6 +2,9 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>TalkSense - Speech Analyzer</title>
@@ -123,21 +126,27 @@
       });
     </script>
     
-    <script type="text/babel" data-presets="react,env" src="components/Navbar.jsx"></script>
+    <script>
+      window.TALKSENSE_BUILD = "2026-04-07-sentiment-v1";
+      window.TALKSENSE_API_BASE = "http://127.0.0.1:8000";
+    </script>
+
+    <script type="text/babel" data-presets="react,env" src="components/Navbar.jsx?v=2026-04-07-sentiment-v1"></script>
     <!-- Load Page Components -->
-    <script type="text/babel" data-presets="react,env" src="pages/AnalyticsPage.jsx"></script>
-    <script type="text/babel" data-presets="react,env" src="pages/LandingPage.jsx"></script>
-    <script type="text/babel" data-presets="react,env" src="pages/AuthPages.jsx"></script>
-    <script type="text/babel" data-presets="react,env" src="pages/SetupPage.jsx"></script>
-    <script type="text/babel" data-presets="react,env" src="pages/LiveSpeechPage.jsx"></script>
-    <script type="text/babel" data-presets="react,env" src="pages/ReportPage.jsx"></script>
-    <script type="text/babel" data-presets="react,env" src="pages/AICoachPage.jsx"></script>
-    <script type="text/babel" data-presets="react,env" src="pages/VocabPage.jsx"></script>
-    <script type="text/babel" data-presets="react,env" src="pages/SpeechLabPage.jsx"></script>
-    <script type="text/babel" data-presets="react,env" src="pages/DashboardPage.jsx"></script>
-    
+    <script type="text/babel" data-presets="react,env" src="pages/AnalyticsWorkspace.jsx?v=2026-04-07-sentiment-v1"></script>
+    <script type="text/babel" data-presets="react,env" src="pages/LandingPage.jsx?v=2026-04-07-sentiment-v1"></script>
+    <script type="text/babel" data-presets="react,env" src="pages/AuthPages.jsx?v=2026-04-07-sentiment-v1"></script>
+    <script type="text/babel" data-presets="react,env" src="pages/SetupPage.jsx?v=2026-04-07-sentiment-v1"></script>
+    <script type="text/babel" data-presets="react,env" src="pages/LiveSpeechPage.jsx?v=2026-04-07-sentiment-v1"></script>
+    <script type="text/babel" data-presets="react,env" src="pages/ReportPage.jsx?v=2026-04-07-sentiment-v1"></script>
+    <script type="text/babel" data-presets="react,env" src="pages/AICoachPage.jsx?v=2026-04-07-sentiment-v1"></script>
+    <script type="text/babel" data-presets="react,env" src="pages/VocabPage.jsx?v=2026-04-07-sentiment-v1"></script>
+    <script type="text/babel" data-presets="react,env" src="pages/SpeechLabPage.jsx?v=2026-04-07-sentiment-v1"></script>
+    <script type="text/babel" data-presets="react,env" src="pages/DashboardPage.jsx?v=2026-04-07-sentiment-v1"></script>
+    <script type="text/babel" data-presets="react,env" src="pages/SettingsPage.jsx?v=2026-04-07-sentiment-v1"></script>
+    <script type="text/babel" data-presets="react,env" src="pages/HelpPage.jsx?v=2026-04-07-sentiment-v1"></script>
     <!-- Main App Entry in Babel -->
-    <script type="text/babel" data-presets="react,env" src="app.jsx"></script>
+    <script type="text/babel" data-presets="react,env" src="app.jsx?v=2026-04-07-sentiment-v1"></script>
 
     <script type="text/babel">
       // This runs after Babel has compiled and executed the other scripts
@@ -152,7 +161,7 @@
           const root = ReactDOM.createRoot(document.getElementById('root'));
           root.render(<App />);
         }
-      }, 2000); // Increased delay for all Babel scripts to compile
+      }, 3500); // Increased delay for all Babel scripts to compile
     </script>
 
     <script>
